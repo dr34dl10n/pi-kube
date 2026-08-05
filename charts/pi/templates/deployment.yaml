@@ -157,10 +157,6 @@ spec:
             - -e
             - -p
             - {{ .Values.ingress.ssh.port | quote }}
-            - -h
-            - /etc/ssh/host-keys/ssh_host_ed25519_key
-            - -h
-            - /etc/ssh/host-keys/ssh_host_rsa_key
           env:
             - name: HOME
               value: /home/pi

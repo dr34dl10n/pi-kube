@@ -72,10 +72,10 @@ kubectl get namespace "$namespace" >/dev/null 2>&1 \
   || kubectl create namespace "$namespace"
 
 # --- Secrets (idempotent) -------------------------------------------------
-make_secret() {  # name key file
+make_secret() {  # name key file — idempotent (create-or-update)
   echo "==> Secret $1 (from $3, key=$2)"
   kubectl -n "$namespace" create secret generic "$1" \
-    --from-file="$2=$3" >/dev/null
+    --from-file="$2=$3" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 }
 
 [ -f "$ssh_key" ]   && make_secret pi-ssh-keys authorized_keys "$ssh_key"
