@@ -1,0 +1,77 @@
+# examples/my-values.yaml — minimal, copy-and-edit install values for pi-kube.
+#
+#   cp examples/my-values.yaml my-values.yaml   # edit, then:
+#   helm install pi ./charts/pi -f my-values.yaml
+#
+# This carries the choices you'd otherwise pass as `--set`. Only fields that
+# need a value for a working interactive install are uncommented; everything
+# else falls back to charts/pi/values.yaml defaults.
+# Full field reference + rationale: charts/pi/values.yaml.
+
+# --- Image ---------------------------------------------------------------
+# The chart default points at the ghcr image built by
+# .github/workflows/release.yml (ghcr.io/dr34dl10n/pi-kube). Override the tag for
+# the full image (batteries included) or a custom build.
+# image:
+#   repository: ghcr.io/dr34dl10n/pi-kube
+#   tag: "0.83.0"          # "0.83.0-full" for the batteries-included image
+
+# --- Pi runtime ----------------------------------------------------------
+pi:
+  mode: interactive
+  securityProfile: permissive   # writable rootfs, non-root, drop ALL caps
+  offline: true                  # PI_OFFLINE=1, no runtime self-updates
+
+  # Default model baked into settings.json (optional).
+  # defaultProvider: anthropic
+  # defaultModel: claude-sonnet-4-5
+  # defaultThinkingLevel: medium
+
+# --- Credentials (OPTIONAL at install) ----------------------------------
+# Recommended: leave empty and authenticate via `/login` in the TUI on first
+# connect — `auth.json` is written to ~/.pi/agent/auth.json on the home PVC and
+# persists across pod restarts. Inject a key here only for headless/Job runs.
+# credentials:
+#   anthropicApiKey: "sk-ant-..."   # chart creates the Secret from this
+#   # existingSecret: pi-creds      # or reference your own Secret
+#   # authJsonSecret: pi-auth       # read-only auth.json mount (disables /login write)
+
+# --- Ingress / exposure --------------------------------------------------
+# wireguard (recommended, zero public ports — needs a configSecret) | tailscale | cloudflare | loadbalancer | none (default)
+ingress:
+  exposure: wireguard
+  ssh:
+    enabled: true
+    port: 2222
+    # Secret with key `authorized_keys` (your SSH pubkey):
+    #   kubectl create secret generic pi-ssh-keys --from-file=authorized_keys=~/.ssh/id_ed25519.pub
+    authorizedKeysSecret: pi-ssh-keys
+
+  # WireGuard: Secret with keys privatekey, peer_pubkey, endpoint, allowedips.
+  # See charts/pi/README.md §Ingress for the Secret layout.
+  wireguard:
+    configSecret: pi-wg
+
+  # Simplest alternative: no sshd, reach the pod with kubectl exec.
+  # exposure: none
+
+# --- Persistence (3-level model) -----------------------------------------
+# Defaults (home 5Gi, workspace 10Gi, local-tools 2Gi) suit most installs.
+# Resize here if needed; leave storageClassName "" for the cluster default.
+# persistence:
+#   home:
+#     size: 5Gi
+#   workspace:
+#     size: 10Gi
+#   localTools:
+#     size: 2Gi
+
+# --- Resources -----------------------------------------------------------
+# Start conservative and raise as needed.
+# resources:
+#   limits:
+#     cpu: "2"
+#     memory: 4Gi
+#   requests:
+#     cpu: "500m"
+#     memory: 1Gi

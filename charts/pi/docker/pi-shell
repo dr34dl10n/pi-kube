@@ -1,0 +1,23 @@
+#!/bin/sh
+# pi-shell — interactive-mode supervisor baked into the pi image.
+#
+# Goal: keep the pod alive and host a single
+# persistent tmux session running `pi`, so that an SSH login (or ttyd) attaches
+# to the *same* Pi session across client disconnects.
+#
+# The tmux socket lives on the shared volume /shared (an emptyDir shared with the
+# sshd/ttyd sidecars), so every container in the pod reaches the same session.
+set -eu
+
+SOCK="${PI_TMUX_SOCKET:-/shared/pi.sock}"
+SESSION="${PI_TMUX_SESSION:-pi}"
+mkdir -p /shared /workspace
+
+# (Re)create the Pi tmux session if it is not already running.
+if ! tmux -S "$SOCK" has-session -t "$SESSION" 2>/dev/null; then
+  tmux -S "$SOCK" new-session -d -s "$SESSION" "cd /workspace && exec pi"
+fi
+chmod 0775 /shared 2>/dev/null || true
+
+# Keep the container alive. The tmux server (detached above) owns the Pi process.
+exec sleep infinity

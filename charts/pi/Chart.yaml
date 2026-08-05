@@ -1,0 +1,22 @@
+apiVersion: v2
+name: pi
+description: |
+  Community Helm chart for Pi Coding Agent (@earendil-works/pi-coding-agent) on Kubernetes.
+  Runs Pi in a pod with persistent config/sessions/workspace, optional GPU, sshd+tmux ingress
+  (WireGuard default), and headless modes (RPC/JSON/print) via Job.
+type: application
+version: 0.1.0
+# appVersion tracks the Pi Coding Agent release this chart is built around.
+appVersion: "0.83.0"
+home: https://github.com/dr34dl10n/pi-kube
+sources:
+  - https://github.com/dr34dl10n/pi-kube
+  - https://github.com/earendil-works/pi
+maintainers:
+  - name: dr34dl10n
+keywords:
+  - pi
+  - coding-agent
+  - ai
+  - llm
+  - kubernetes

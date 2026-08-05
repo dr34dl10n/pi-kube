@@ -1,0 +1,61 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "pi.fullname" . }}
+  labels:
+    {{- include "pi.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "pi.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    {{- if include "pi.sshEnabled" . }}
+    # SSH from the in-pod tunnel sidecar arrives over localhost (not subject to
+    # NetworkPolicy). For the LoadBalancer exposure, allow the configured CIDRs.
+    {{- if and (include "pi.loadbalancerEnabled" .) .Values.ingress.loadbalancer.allowedCIDRs }}
+    {{- range $cidr := .Values.ingress.loadbalancer.allowedCIDRs }}
+    - from:
+        - ipBlock:
+            cidr: {{ $cidr | quote }}
+      ports:
+        - protocol: TCP
+          port: {{ $.Values.ingress.ssh.port }}
+    {{- end }}
+    {{- else if include "pi.loadbalancerEnabled" . }}
+    # LoadBalancer exposure with no CIDR filter: allow any source to the SSH port.
+    - ports:
+        - protocol: TCP
+          port: {{ .Values.ingress.ssh.port }}
+    {{- else }}
+    # Non-LB exposure: nothing needs to reach the pod from outside (sidecar uses
+    # localhost). Keep an empty ingress allowance so the policy is valid.
+    - ports:
+        - protocol: TCP
+          port: {{ .Values.ingress.ssh.port }}
+    {{- end }}
+    {{- else }}
+    # No sshd: no inbound traffic expected.
+    - ports: []
+    {{- end }}
+  egress:
+    {{- $egress := .Values.networkPolicy.egress }}
+    {{- if eq $egress "allowAll" }}
+    - {}
+    {{- else if eq $egress "denyAll" }}
+    []
+    {{- else }}
+    # allowAllExceptMetadata (default): free egress minus the cloud metadata endpoint.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 169.254.169.254/32
+    {{- end }}
+    {{- with .Values.networkPolicy.extraEgress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+{{- end }}

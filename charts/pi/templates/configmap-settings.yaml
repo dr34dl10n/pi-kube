@@ -1,0 +1,23 @@
+{{- if ne .Values.pi.mode "interactive" }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "pi.fullname" . }}-settings
+  labels:
+    {{- include "pi.labels" . | nindent 4 }}
+data:
+  settings.json: |
+    {
+      {{- with .Values.pi.defaultProvider }}
+      "defaultProvider": {{ . | toJson }},
+      {{- end }}
+      {{- with .Values.pi.defaultModel }}
+      "defaultModel": {{ . | toJson }},
+      {{- end }}
+      {{- with .Values.pi.defaultThinkingLevel }}
+      "defaultThinkingLevel": {{ . | toJson }},
+      {{- end }}
+      "defaultProjectTrust": "always",
+      "enableInstallTelemetry": false
+    }
+{{- end }}

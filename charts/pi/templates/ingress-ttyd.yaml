@@ -1,0 +1,35 @@
+{{- if and .Values.ingress.ttyd.enabled .Values.ingress.ttyd.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "pi.fullname" . }}-ttyd
+  labels:
+    {{- include "pi.labels" . | nindent 4 }}
+  {{- with .Values.ingress.ttyd.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.ttyd.ingress.className }}
+  ingressClassName: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.ingress.ttyd.ingress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- range .Values.ingress.ttyd.ingress.hosts }}
+    - host: {{ .host | quote }}
+      http:
+        paths:
+          {{- range .paths }}
+          - path: {{ .path | quote }}
+            pathType: {{ .pathType | default "Prefix" }}
+            backend:
+              service:
+                name: {{ include "pi.fullname" $ }}-ttyd
+                port:
+                  name: ttyd
+          {{- end }}
+    {{- end }}
+{{- end }}

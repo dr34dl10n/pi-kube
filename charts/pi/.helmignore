@@ -1,0 +1,4 @@
+# Patterns to ignore when packaging the chart.
+.git/
+.gitignore
+# Keep docker/ (Dockerfile.pi + wrappers) and README — they ship with the chart.

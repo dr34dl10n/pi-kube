@@ -1,0 +1,166 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "pi-kube values",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "image": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "repository": { "type": "string" },
+        "tag": { "type": "string" },
+        "pullPolicy": {
+          "type": "string",
+          "enum": ["Always", "IfNotPresent", "Never", ""]
+        }
+      }
+    },
+    "pi": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["interactive", "rpc", "print", "json"]
+        },
+        "securityProfile": {
+          "type": "string",
+          "enum": ["permissive", "strict"]
+        },
+        "offline": { "type": "boolean" },
+        "defaultProvider": { "type": "string" },
+        "defaultModel": { "type": "string" },
+        "defaultThinkingLevel": { "type": "string" },
+        "extraEnv": {
+          "type": "array",
+          "items": { "type": "object", "additionalProperties": true }
+        },
+        "gpu": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "count": { "type": ["integer", "string"] }
+          }
+        }
+      }
+    },
+    "workload": {
+      "type": "string",
+      "enum": ["deployment"]
+    },
+    "job": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "restartPolicy": {
+          "type": "string",
+          "enum": ["Never", "OnFailure"]
+        },
+        "backoffLimit": { "type": "integer" },
+        "ttlSecondsAfterFinished": { "type": "integer" },
+        "prompt": { "type": "string" }
+      }
+    },
+    "persistence": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "home": { "$ref": "#/definitions/pvc" },
+        "workspace": { "$ref": "#/definitions/pvc" },
+        "localTools": { "$ref": "#/definitions/pvc" }
+      }
+    },
+    "credentials": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "existingSecret": { "type": "string" },
+        "anthropicApiKey": { "type": "string" },
+        "openaiApiKey": { "type": "string" },
+        "geminiApiKey": { "type": "string" },
+        "deepseekApiKey": { "type": "string" },
+        "groqApiKey": { "type": "string" },
+        "openrouterApiKey": { "type": "string" },
+        "authJsonSecret": { "type": "string" },
+        "authJson": { "type": "string" }
+      }
+    },
+    "ingress": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "exposure": {
+          "type": "string",
+          "enum": ["wireguard", "tailscale", "cloudflare", "loadbalancer", "none"]
+        },
+        "ssh": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "port": { "type": "integer" },
+            "authorizedKeysSecret": { "type": "string" },
+            "hostKeysPVC": { "type": "boolean" }
+          }
+        },
+        "wireguard": { "type": "object", "additionalProperties": true },
+        "tailscale": { "type": "object", "additionalProperties": true },
+        "cloudflare": { "type": "object", "additionalProperties": true },
+        "loadbalancer": { "type": "object", "additionalProperties": true },
+        "ttyd": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "networkPolicy": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "egress": {
+          "type": "string",
+          "enum": ["allowAllExceptMetadata", "denyAll", "allowAll"]
+        },
+        "extraEgress": { "type": "array" }
+      }
+    },
+    "runtimeClassName": { "type": "string" },
+    "resources": { "type": "object", "additionalProperties": true },
+    "nodeSelector": { "type": "object", "additionalProperties": true },
+    "tolerations": { "type": "array" },
+    "affinity": { "type": "object", "additionalProperties": true },
+    "serviceAccount": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "create": { "type": "boolean" },
+        "name": { "type": "string" },
+        "annotations": { "type": "object", "additionalProperties": true }
+      }
+    },
+    "probes": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "execCommand": { "type": "object", "additionalProperties": true }
+      }
+    }
+  },
+  "definitions": {
+    "pvc": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "size": { "type": "string" },
+        "mountPath": { "type": "string" },
+        "storageClassName": { "type": "string" },
+        "accessModes": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{{- if and .Values.ingress.ttyd.enabled .Values.ingress.ttyd.service.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "pi.fullname" . }}-ttyd
+  labels:
+    {{- include "pi.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.ingress.ttyd.service.type }}
+  selector:
+    {{- include "pi.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: ttyd
+      port: {{ .Values.ingress.ttyd.service.port }}
+      targetPort: ttyd
+      protocol: TCP
+{{- end }}

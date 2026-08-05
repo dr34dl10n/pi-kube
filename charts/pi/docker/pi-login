@@ -1,0 +1,11 @@
+#!/bin/sh
+# pi-login — SSH login shell for the `pi` user.
+# Attaches to the persistent Pi tmux session (created by pi-shell).
+# Falls back to a plain shell if tmux is unavailable.
+set -eu
+SOCK="${PI_TMUX_SOCKET:-/shared/pi.sock}"
+SESSION="${PI_TMUX_SESSION:-pi}"
+if command -v tmux >/dev/null 2>&1 && tmux -S "$SOCK" has-session -t "$SESSION" 2>/dev/null; then
+  exec tmux -S "$SOCK" attach -t "$SESSION"
+fi
+exec "${SHELL:-/bin/sh}"

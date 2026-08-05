@@ -1,0 +1,19 @@
+{{- if include "pi.sshEnabled" . }}
+{{- if include "pi.loadbalancerEnabled" . }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "pi.fullname" . }}-ssh
+  labels:
+    {{- include "pi.labels" . | nindent 4 }}
+spec:
+  type: LoadBalancer
+  selector:
+    {{- include "pi.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: ssh
+      port: {{ .Values.ingress.ssh.port }}
+      targetPort: ssh
+      protocol: TCP
+{{- end }}
+{{- end }}

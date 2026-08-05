@@ -1,0 +1,329 @@
+{{- if include "pi.isDeployment" . }}
+{{- include "pi.validate" . -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "pi.fullname" . }}
+  labels:
+    {{- include "pi.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  # Recreate: 1 replica + RWO PVC -> avoid two pods fighting for the volume.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "pi.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "pi.selectorLabels" . | nindent 8 }}
+      annotations:
+        # Roll the pod when settings.json changes.
+        checksum/settings: {{ include (print $.Template.BasePath "/configmap-settings.yaml") . | sha256sum }}
+        checksum/credentials: {{ include (print $.Template.BasePath "/secret-credentials.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "pi.serviceAccountName" . }}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if or .Values.runtimeClassName (and .Values.pi.gpu.enabled .Values.pi.gpu.runtimeClassName) }}
+      runtimeClassName: {{ default .Values.runtimeClassName .Values.pi.gpu.runtimeClassName | quote }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        fsGroup: 1000
+      volumes:
+        - name: shared
+          emptyDir: {}
+        {{- include "pi.volumes" . | nindent 8 }}
+        {{- if include "pi.wireguardEnabled" . }}
+        {{- if .Values.ingress.wireguard.configSecret }}
+        - name: wireguard-config
+          secret:
+            secretName: {{ .Values.ingress.wireguard.configSecret | quote }}
+            defaultMode: 0400
+        {{- end }}
+        {{- end }}
+        {{- if include "pi.tailscaleEnabled" . }}
+        - name: tailscale-state
+          emptyDir: {}
+        {{- end }}
+
+      {{- if include "pi.sshEnabled" . }}
+      initContainers:
+        - name: ssh-host-keys
+          image: {{ include "pi.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              cd /etc/ssh/host-keys
+              [ -f ssh_host_ed25519_key ] || ssh-keygen -t ed25519 -f ssh_host_ed25519_key -N "" -q
+              [ -f ssh_host_rsa_key ]     || ssh-keygen -t rsa -b 2048 -f ssh_host_rsa_key -N "" -q
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            allowPrivilegeEscalation: false
+            privileged: false
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: ssh-host-keys
+              mountPath: /etc/ssh/host-keys
+      {{- end }}
+
+      containers:
+        - name: pi
+          image: {{ include "pi.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            {{- include "pi.command" . | nindent 12 }}
+          env:
+            {{- include "pi.env" . | nindent 12 }}
+          {{- if not .Values.credentials.existingSecret }}
+          envFrom:
+            - secretRef:
+                name: {{ include "pi.fullname" . }}-credentials
+                optional: true
+          {{- else }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.credentials.existingSecret | quote }}
+                optional: true
+          {{- end }}
+          volumeMounts:
+            - name: shared
+              mountPath: /shared
+            {{- include "pi.volumeMounts" . | nindent 12 }}
+          securityContext:
+            {{- include "pi.containerSecurityContext" . | nindent 12 }}
+          workingDir: /workspace
+          {{- $res := deepCopy .Values.resources }}
+          {{- if .Values.pi.gpu.enabled }}
+            {{- $limits := get $res "limits" | default dict }}
+            {{- $_ := set $limits "nvidia.com/gpu" (.Values.pi.gpu.count | int) }}
+            {{- $_ := set $res "limits" $limits }}
+          {{- end }}
+          {{- with $res }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if .Values.probes.enabled }}
+          {{- $cmd := index .Values.probes.execCommand .Values.pi.mode }}
+          {{- if $cmd }}
+          livenessProbe:
+            exec:
+              command:
+                {{- toYaml $cmd | nindent 16 }}
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            exec:
+              command:
+                {{- toYaml $cmd | nindent 16 }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          {{- end }}
+          {{- end }}
+
+        {{- if include "pi.sshEnabled" . }}
+        - name: sshd
+          image: {{ include "pi.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - /usr/sbin/sshd
+            - -D
+            - -e
+            - -p
+            - {{ .Values.ingress.ssh.port | quote }}
+            - -h
+            - /etc/ssh/host-keys/ssh_host_ed25519_key
+            - -h
+            - /etc/ssh/host-keys/ssh_host_rsa_key
+          env:
+            - name: HOME
+              value: /home/pi
+          volumeMounts:
+            - name: shared
+              mountPath: /shared
+            - name: ssh-host-keys
+              mountPath: /etc/ssh/host-keys
+            {{- if .Values.ingress.ssh.authorizedKeysSecret }}
+            - name: ssh-authorized-keys
+              mountPath: /home/pi/.ssh/authorized_keys
+              subPath: authorized_keys
+            {{- end }}
+            {{- if .Values.persistence.home.enabled }}
+            - name: home
+              mountPath: {{ .Values.persistence.home.mountPath | quote }}
+            {{- end }}
+          securityContext:
+            # sshd must bind its port; 2222 > 1024 so non-root is fine.
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            allowPrivilegeEscalation: false
+            privileged: false
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+          ports:
+            - name: ssh
+              containerPort: {{ .Values.ingress.ssh.port }}
+              protocol: TCP
+        {{- end }}
+
+        {{- if include "pi.wireguardEnabled" . }}
+        - name: wireguard
+          image: {{ .Values.ingress.wireguard.sidecar.image | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- if .Values.ingress.wireguard.configSecret }}
+          env:
+            - name: WG_CONFIG
+              value: /etc/wireguard/wg0.conf
+          {{- end }}
+          securityContext:
+            # WireGuard client needs NET_ADMIN + /dev/net/tun. Isolated from the
+            # permissive pi container; caps drop ALL then add NET_ADMIN.
+            runAsNonRoot: false
+            capabilities:
+              drop:
+                - ALL
+              add:
+                - NET_ADMIN
+            allowPrivilegeEscalation: false
+            privileged: false
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            {{- if .Values.ingress.wireguard.configSecret }}
+            - name: wireguard-config
+              mountPath: /etc/wireguard
+              readOnly: true
+            {{- end }}
+            - name: shared
+              mountPath: /shared
+        {{- end }}
+
+        {{- if include "pi.tailscaleEnabled" . }}
+        - name: tailscale
+          image: {{ .Values.ingress.tailscale.sidecar.image | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: TS_USERSPACE
+              value: "false"
+            {{- if .Values.ingress.tailscale.authKeySecret }}
+            - name: TS_AUTHKEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.ingress.tailscale.authKeySecret | quote }}
+                  key: authKey
+            {{- end }}
+          securityContext:
+            runAsNonRoot: false
+            capabilities:
+              drop:
+                - ALL
+              add:
+                - NET_ADMIN
+            allowPrivilegeEscalation: false
+            privileged: false
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: tailscale-state
+              mountPath: /var/lib/tailscale
+            - name: shared
+              mountPath: /shared
+        {{- end }}
+
+        {{- if include "pi.cloudflareEnabled" . }}
+        - name: cloudflared
+          image: {{ .Values.ingress.cloudflare.sidecar.image | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- if .Values.ingress.cloudflare.tunnelTokenSecret }}
+          command:
+            - cloudflared
+            - tunnel
+            - --no-autoupdate
+            - run
+          env:
+            - name: TUNNEL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.ingress.cloudflare.tunnelTokenSecret | quote }}
+                  key: token
+          {{- end }}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            privileged: false
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: shared
+              mountPath: /shared
+        {{- end }}
+
+        {{- if .Values.ingress.ttyd.enabled }}
+        - name: ttyd
+          image: {{ .Values.ingress.ttyd.image | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - ttyd
+            - -W
+            - -p
+            - "7681"
+            {{- with .Values.ingress.ttyd.basicAuth }}
+            - -c
+            - {{ . | quote }}
+            {{- end }}
+            - -- 
+            - sh
+            - -c
+            - tmux -S /shared/pi.sock attach -t pi || exec sh
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            allowPrivilegeEscalation: false
+            privileged: false
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: shared
+              mountPath: /shared
+          ports:
+            - name: ttyd
+              containerPort: 7681
+              protocol: TCP
+        {{- end }}
+{{- end }}

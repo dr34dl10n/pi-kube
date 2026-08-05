@@ -1,0 +1,254 @@
+# values.yaml — pi-kube Helm chart
+# See charts/pi/README.md for the rationale behind every field.
+# All defaults are chosen so `helm install` produces a working, lint-clean chart.
+
+# ---------------------------------------------------------------------------
+# Global / image
+# ---------------------------------------------------------------------------
+global:
+  # Optional: pull secrets for private image registries (applies to all images).
+  imagePullSecrets: []
+  # - name: my-registry-secret
+
+image:
+  repository: ghcr.io/dr34dl10n/pi-kube
+  # Slim variant by default. Use "<tag>-full" for the batteries-included image,
+  # or build a custom image with `ARG PACKAGES` (see docker/Dockerfile.pi).
+  tag: "0.83.0"
+  pullPolicy: IfNotPresent
+
+# ---------------------------------------------------------------------------
+# Pi runtime
+# ---------------------------------------------------------------------------
+pi:
+  # interactive|rpc  -> Deployment (long-lived)
+  # print|json       -> Job (one-shot)
+  mode: interactive
+
+  # permissive (default): writable rootfs, non-root, drop ALL caps. Lets the agent
+  #   install tools / build during a run. System packages are NOT persisted across
+  #   pod restarts (see persistence 3-level model in the README).
+  # strict: readOnlyRootFilesystem + tmpfs only. For untrusted, unattended work.
+  securityProfile: permissive
+
+  # PI_OFFLINE=1 disables update-checks/telemetry (NOT `pi install`, which still
+  # reaches npm/github). Recommended on K8s to avoid runtime self-updates.
+  offline: true
+
+  # Default provider/model/thinking baked into settings.json. Override freely.
+  defaultProvider: ""
+  defaultModel: ""
+  defaultThinkingLevel: ""
+
+  # Extra env vars injected into the pi container (merged with generated ones).
+  extraEnv: []
+  # - name: HTTP_PROXY
+  #   value: "http://proxy.svc:3128"
+
+  gpu:
+    # Optional: request an NVIDIA GPU for local llama.cpp / cloud GPU capabilities.
+    enabled: false
+    count: 1
+    # runtimeClassName overrides the pod-level runtimeClassName when GPU is on.
+    # runtimeClassName: "nvidia"
+
+# ---------------------------------------------------------------------------
+# Workload
+# ---------------------------------------------------------------------------
+workload: deployment   # deployment (MVP). StatefulSet is a documented future upgrade (see README), not yet implemented.
+
+# Job options, used only when pi.mode is print|json.
+job:
+  restartPolicy: Never
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 3600
+  # The one-shot prompt is read from `pi.prompt` below.
+  prompt: ""
+
+# ---------------------------------------------------------------------------
+# Persistence — 3-level model
+# ---------------------------------------------------------------------------
+persistence:
+  # Level 2: Pi config dir (~/.pi/agent) — settings, sessions, auth, pi packages,
+  # extensions/skills/themes. The ONLY thing Pi needs to be fully PVC-friendly.
+  home:
+    enabled: true
+    size: 5Gi
+    mountPath: /home/pi/.pi/agent
+    storageClassName: ""   # "" = cluster default
+    accessModes:
+      - ReadWriteOnce
+  # Level 3: user workspace (git repos, downloaded SDKs, build artifacts).
+  workspace:
+    enabled: true
+    size: 10Gi
+    mountPath: /workspace
+    storageClassName: ""
+    accessModes:
+      - ReadWriteOnce
+  # Level 3: ~/.local — runtime-installed user tools (npm global prefix, pip --user,
+  # downloaded CLIs). Added to PATH so `npm i -g` / `pip install --user` persist.
+  localTools:
+    enabled: true
+    size: 2Gi
+    mountPath: /home/pi/.local
+    storageClassName: ""
+    accessModes:
+      - ReadWriteOnce
+
+# ---------------------------------------------------------------------------
+# Credentials / auth (OPTIONAL at install)
+# ---------------------------------------------------------------------------
+# Recommended: leave everything empty and run `/login` in the TUI on first
+# connect. Pi writes auth.json to ~/.pi/agent/auth.json on the home PVC, so the
+# login persists across pod restarts. Inject a key below only for headless /
+# unattended / Job runs (the chart mounts this Secret with `optional: true`, so
+# the pod starts fine even when empty).
+# ⚠️ Setting authJsonSecret/authJson mounts a READ-ONLY Secret at
+# ~/.pi/agent/auth.json, which blocks the interactive `/login` write path — use
+# those only to pre-seed an auth.json you already have.
+# ---------------------------------------------------------------------------
+credentials:
+  # If you already manage a Secret, reference it here. It must expose the env vars
+  # you rely on (ANTHROPIC_API_KEY, OPENAI_API_KEY, ...).
+  existingSecret: ""
+
+  # Otherwise the chart creates a Secret from these (leave empty to skip a key).
+  anthropicApiKey: ""
+  openaiApiKey: ""
+  geminiApiKey: ""
+  deepseekApiKey: ""
+  groqApiKey: ""
+  openrouterApiKey: ""
+
+  # auth.json is mounted at ~/.pi/agent/auth.json from a Secret (re-mountable,
+  # survives PVC loss). Provide raw JSON, or reference an existing Secret.
+  authJsonSecret: ""          # existing Secret name with key `auth.json`
+  authJson: ""                # raw auth.json content (chart creates the Secret)
+
+# ---------------------------------------------------------------------------
+# Ingress / exposure
+# Default is `none` (safest: zero ingress, reach the pod with `kubectl exec`).
+# WireGuard is the recommended exposure for real access: the pod dials out to
+# the user's WG server, so NO port is exposed on the cluster, SSH lands you in
+# tmux -> Pi. It requires a configSecret (see ingress.wireguard.configSecret).
+# ---------------------------------------------------------------------------
+ingress:
+  # none(default, safest — kubectl exec) | wireguard(recommended) | tailscale | cloudflare | loadbalancer
+  # WireGuard needs NO port on the cluster (pod dials out), but requires a
+  # configSecret — so it is NOT the default (a bare `helm install` would CrashLoop
+  # without one). Set exposure=wireguard + ingress.wireguard.configSecret for real access.
+  exposure: none
+
+  ssh:
+    # sshd runs in every exposure mode except `none` (where you use `kubectl exec`).
+    enabled: true
+    port: 2222
+    # Secret with key `authorized_keys` (one or more public keys, newline-separated).
+    authorizedKeysSecret: ""
+    # Persist SSH host keys on the home PVC so the pod identity is stable.
+    hostKeysPVC: true
+    # If hostKeysPVC is false, host keys live in the container writable layer
+    # (regenerated at each restart -> new host key warning for clients).
+
+  wireguard:
+    sidecar:
+      image: ghcr.io/linuxserver/wireguard:latest
+      # Userspace alternative that avoids NET_ADMIN: "ghcr.io/linuxserver/wireguard-go:latest"
+    # Secret with keys: privatekey, peer_pubkey, endpoint, allowedips, address (optional).
+    configSecret: ""
+    keepalive: 25
+
+  tailscale:
+    sidecar:
+      image: tailscale/tailscale:latest
+    authKeySecret: ""        # Secret with key `authKey`
+
+  cloudflare:
+    sidecar:
+      image: cloudflare/cloudflared:latest
+    tunnelTokenSecret: ""    # Secret with key `token`
+
+  loadbalancer:
+    # Restrict the LB to these CIDRs (cloud-specific firewall annotations may be
+    # needed; left as annotations on the Service for the user to add).
+    allowedCIDRs: []
+    # - 10.0.0.0/8
+
+  ttyd:
+    # Secondary option: terminal in the browser. Requires sshd+tmux (enabled above).
+    enabled: false
+    image: tsl0922/ttyd:latest
+    service:
+      enabled: true
+      port: 7681
+      type: ClusterIP
+    ingress:
+      enabled: false
+      className: ""
+      annotations: {}
+      hosts: []
+      # - host: pi.example.com
+      #   paths:
+      #     - path: /terminal
+      #       pathType: Prefix
+      tls: []
+    # Basic auth "user:pass" (use a Secret in production). Empty = no auth.
+    basicAuth: ""
+
+# ---------------------------------------------------------------------------
+# NetworkPolicy
+# ---------------------------------------------------------------------------
+networkPolicy:
+  enabled: true
+  # allowAllExceptMetadata (default): free egress except the cloud metadata endpoint.
+  # denyAll: no egress (use for fully offline runs).
+  # allowAll: no egress restriction.
+  egress: allowAllExceptMetadata
+  # Additional egress CIDRs to allow explicitly (used with denyAll/allowAllExceptMetadata).
+  extraEgress: []
+  # - to: [{ ipBlock: { cidr: 10.0.0.0/8 } }]
+  #   ports: [{ protocol: TCP, port: 443 }]
+
+# ---------------------------------------------------------------------------
+# Runtime / scheduling
+# ---------------------------------------------------------------------------
+# Pod-level runtimeClassName (e.g. gVisor/Kata). OFF by default: gVisor can break
+# builds/tools. Set explicitly only when you know the impact.
+runtimeClassName: ""
+
+# Resource requests/limits for the pi container.
+resources:
+  {}
+  # limits:
+  #   cpu: "2"
+  #   memory: 4Gi
+  # requests:
+  #   cpu: "500m"
+  #   memory: 1Gi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# ---------------------------------------------------------------------------
+# Service account
+# ---------------------------------------------------------------------------
+serviceAccount:
+  create: true
+  name: ""             # "" -> generated from release name
+  annotations: {}
+  # IRSA / cloud workload identity annotations for Job + S3 access, etc.
+  # eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/pi
+
+# ---------------------------------------------------------------------------
+# Probes — exec-based (pgrep), no HTTP server.
+# Only applied to the Deployment (interactive/rpc), not the Job.
+# ---------------------------------------------------------------------------
+probes:
+  enabled: true
+  # Interactive mode keeps the pod alive with a supervisor; we probe the supervisor.
+  # rpc mode probes the `pi --mode rpc` process.
+  execCommand:
+    interactive: ["sh", "-c", "pgrep -f 'pi-shell' || pgrep -f 'pi'"]
+    rpc: ["sh", "-c", "pgrep -f 'pi --mode rpc'"]

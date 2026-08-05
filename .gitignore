@@ -1,0 +1,13 @@
+# Local build / kaniko scratch context (test manifests + throwaway SSH keys)
+.kaniko-ctx/
+
+# Helm package output (helm package charts/pi -> ./pi-<version>.tgz)
+*.tgz
+
+# Vendored chart dependencies (helm dependency build)
+charts/*/charts/
+
+# Internal design scratch (not published): feasibility notes + chart review.
+# Kept locally only — see charts/pi/README.md for the public design rationale.
+research/
+CHART_REVIEW.md

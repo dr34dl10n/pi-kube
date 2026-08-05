@@ -1,0 +1,79 @@
+{{- if include "pi.isJob" . }}
+{{- include "pi.validate" . -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "pi.fullname" . }}
+  labels:
+    {{- include "pi.labels" . | nindent 4 }}
+spec:
+  backoffLimit: {{ .Values.job.backoffLimit }}
+  ttlSecondsAfterFinished: {{ .Values.job.ttlSecondsAfterFinished }}
+  template:
+    metadata:
+      labels:
+        {{- include "pi.selectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/settings: {{ include (print $.Template.BasePath "/configmap-settings.yaml") . | sha256sum }}
+        checksum/credentials: {{ include (print $.Template.BasePath "/secret-credentials.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "pi.serviceAccountName" . }}
+      restartPolicy: {{ .Values.job.restartPolicy }}
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if or .Values.runtimeClassName (and .Values.pi.gpu.enabled .Values.pi.gpu.runtimeClassName) }}
+      runtimeClassName: {{ default .Values.runtimeClassName .Values.pi.gpu.runtimeClassName | quote }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        fsGroup: 1000
+      volumes:
+        {{- include "pi.volumes" . | nindent 8 }}
+      containers:
+        - name: pi
+          image: {{ include "pi.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            {{- include "pi.command" . | nindent 12 }}
+          env:
+            {{- include "pi.env" . | nindent 12 }}
+          {{- if not .Values.credentials.existingSecret }}
+          envFrom:
+            - secretRef:
+                name: {{ include "pi.fullname" . }}-credentials
+                optional: true
+          {{- else }}
+          envFrom:
+            - secretRef:
+                name: {{ .Values.credentials.existingSecret | quote }}
+                optional: true
+          {{- end }}
+          volumeMounts:
+            {{- include "pi.volumeMounts" . | nindent 12 }}
+          securityContext:
+            {{- include "pi.containerSecurityContext" . | nindent 12 }}
+          workingDir: /workspace
+          {{- $res := deepCopy .Values.resources }}
+          {{- if .Values.pi.gpu.enabled }}
+            {{- $limits := get $res "limits" | default dict }}
+            {{- $_ := set $limits "nvidia.com/gpu" (.Values.pi.gpu.count | int) }}
+            {{- $_ := set $res "limits" $limits }}
+          {{- end }}
+          {{- with $res }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}

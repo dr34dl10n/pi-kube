@@ -1,0 +1,56 @@
+pi-kube — Pi Coding Agent on Kubernetes
+
+Release: {{ .Release.Name }} (namespace {{ .Release.Namespace }})
+Mode:   {{ .Values.pi.mode }}  (workload: {{ if include "pi.isDeployment" . }}Deployment{{ else }}Job{{ end }})
+Image:  {{ include "pi.image" . }}
+
+{{- if include "pi.isDeployment" . }}
+
+Persistence (3-level model):
+{{- if .Values.persistence.home.enabled }}  - ~/.pi/agent  -> PVC {{ include "pi.fullname" . }}-home ({{ .Values.persistence.home.size }}){{ end }}
+{{- if .Values.persistence.workspace.enabled }}  - /workspace    -> PVC {{ include "pi.fullname" . }}-workspace ({{ .Values.persistence.workspace.size }}){{ end }}
+{{- if .Values.persistence.localTools.enabled }}  - ~/.local      -> PVC {{ include "pi.fullname" . }}-local-tools ({{ .Values.persistence.localTools.size }}){{ end }}
+
+Exposure: {{ .Values.ingress.exposure }}
+{{- if eq .Values.ingress.exposure "none" }}
+
+The pod has no ingress. Attach interactively with:
+  kubectl -n {{ .Release.Namespace }} exec -it deploy/{{ include "pi.fullname" . }} -c pi -- bash -lc pi
+{{- else if eq .Values.ingress.exposure "wireguard" }}
+
+WireGuard (dial-out): the pod joins YOUR WireGuard network as a client. SSH in with:
+  ssh -p {{ .Values.ingress.ssh.port }} pi@<pod-tunnel-ip>
+You land in a tmux session running Pi. Provide a Secret with keys
+{privatekey, peer_pubkey, endpoint, allowedips} via ingress.wireguard.configSecret.
+{{- else if eq .Values.ingress.exposure "tailscale" }}
+
+Tailscale: the pod joins your tailnet. SSH in with:
+  ssh -p {{ .Values.ingress.ssh.port }} pi@<pod-tailnet-name>
+Provide a Secret with key `authKey` via ingress.tailscale.authKeySecret.
+{{- else if eq .Values.ingress.exposure "cloudflare" }}
+
+Cloudflare Tunnel: sshd is exposed over a CF tunnel. Provide a Secret with key
+`token` via ingress.cloudflare.tunnelTokenSecret.
+{{- else if eq .Values.ingress.exposure "loadbalancer" }}
+
+LoadBalancer: SSH is exposed on a public LoadBalancer:
+  kubectl -n {{ .Release.Namespace }} get svc {{ include "pi.fullname" . }}-ssh
+  ssh -p {{ .Values.ingress.ssh.port }} pi@<EXTERNAL-IP>
+{{- end }}
+
+{{- if .Values.ingress.ttyd.enabled }}
+ttyd (browser terminal) is enabled on Service {{ include "pi.fullname" . }}-ttyd:{{ .Values.ingress.ttyd.service.port }}.
+{{- end }}
+
+{{- else }}
+
+Job mode ({{ .Values.pi.mode }}): the one-shot prompt runs and exits. View the result:
+  kubectl -n {{ .Release.Namespace }} logs job/{{ include "pi.fullname" . }} -c pi
+Prompt: {{ .Values.job.prompt | quote }}
+
+{{- end }}
+
+Reminders:
+  - helm uninstall does NOT delete PVCs (Retain). Delete them manually to reclaim space.
+  - git commit && push your /workspace before helm upgrade / pod deletion. No backups in v1.
+  - auth.json is mounted from a Secret at {{ .Values.persistence.home.mountPath }}/auth.json.

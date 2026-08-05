@@ -1,0 +1,62 @@
+{{- define "pi.pvc.spec" -}}
+{{- /* called with the pvc values dict as "." */ -}}
+accessModes:
+{{- toYaml .accessModes | nindent 2 }}
+{{- if .storageClassName }}
+storageClassName: {{ .storageClassName | quote }}
+{{- end }}
+resources:
+  requests:
+    storage: {{ .size | quote }}
+{{- end -}}
+
+{{- if .Values.persistence.home.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "pi.fullname" . }}-home
+  labels:
+    {{- include "pi.labels" . | nindent 4 }}
+spec:
+  {{- include "pi.pvc.spec" .Values.persistence.home | nindent 2 }}
+{{- end }}
+
+{{- if .Values.persistence.workspace.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "pi.fullname" . }}-workspace
+  labels:
+    {{- include "pi.labels" . | nindent 4 }}
+spec:
+  {{- include "pi.pvc.spec" .Values.persistence.workspace | nindent 2 }}
+{{- end }}
+
+{{- if .Values.persistence.localTools.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "pi.fullname" . }}-local-tools
+  labels:
+    {{- include "pi.labels" . | nindent 4 }}
+spec:
+  {{- include "pi.pvc.spec" .Values.persistence.localTools | nindent 2 }}
+{{- end }}
+
+{{- if and (include "pi.sshEnabled" .) .Values.ingress.ssh.hostKeysPVC }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "pi.fullname" . }}-ssh-host-keys
+  labels:
+    {{- include "pi.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Mi
+{{- end }}

@@ -1,0 +1,99 @@
+# syntax=docker/dockerfile:1
+# Dockerfile.pi — image variants for the pi-kube Helm chart.
+# Persistence: 3-level model (home / workspace / local-tools PVCs).
+#
+# Build targets:
+#   slim (default): node + bash + git + ripgrep + tmux + openssh + curl + ca-cert
+#   full:           slim + gh, jq, fzf, build-essential, python3, uv, ffmpeg, dnsutils
+#   custom:         slim + your own apt packages via `--build-arg PACKAGES="..."`
+#
+# Examples:
+#   docker build --target slim --build-arg PI_VERSION=0.83.0 \
+#                -t ghcr.io/dr34dl10n/pi-kube:0.83.0      -f docker/Dockerfile.pi .
+#   docker build --target full  --build-arg PI_VERSION=0.83.0 \
+#                -t ghcr.io/dr34dl10n/pi-kube:0.83.0-full -f docker/Dockerfile.pi .
+#   docker build --build-arg PI_VERSION=0.83.0 --build-arg PACKAGES="terraform helm kubectl" \
+#                -t myorg/pi:0.83.0-custom -f docker/Dockerfile.pi .
+#
+# PI_VERSION (default: empty = latest) pins the @earendil-works/pi-coding-agent npm
+# package. scripts/build-image.sh passes the chart appVersion automatically.
+#
+# Multi-arch: build with `docker buildx build --platform linux/amd64,linux/arm64`.
+
+ARG NODE_IMAGE=node:24-bookworm-slim
+
+############################
+# slim — base image (default variant)
+############################
+FROM ${NODE_IMAGE} AS slim
+
+# Extra apt packages baked into the custom image (empty = slim).
+ARG PACKAGES=""
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        bash ca-certificates git ripgrep tmux openssh-server openssh-client curl \
+        $PACKAGES \
+    && rm -rf /var/lib/apt/lists/*
+
+# Pi Coding Agent, pinned to the chart's appVersion (passed via --build-arg PI_VERSION
+# from scripts/build-image.sh). Empty => latest (not recommended for release images).
+ARG PI_VERSION=""
+RUN if [ -n "$PI_VERSION" ]; then \
+      npm install -g --ignore-scripts "@earendil-works/pi-coding-agent@${PI_VERSION}"; \
+    else \
+      echo "warning: PI_VERSION not set, installing @earendil-works/pi-coding-agent@latest" >&2; \
+      npm install -g --ignore-scripts @earendil-works/pi-coding-agent; \
+    fi
+COPY docker/pi-shell  /usr/local/bin/pi-shell
+COPY docker/pi-login  /usr/local/bin/pi-login
+RUN chmod +x /usr/local/bin/pi-shell /usr/local/bin/pi-login
+
+# Non-root user `pi` (UID/GID 1000), matching the chart's securityContext.
+# node:24-bookworm-slim already occupies UID/GID 1000 (the `node` user), so
+# reclaim that identity first. npm/node binaries live in /usr/local/bin (root-owned,
+# installed by the base image) and are NOT removed by userdel.
+RUN userdel -r node 2>/dev/null || true \
+    && groupadd --system --gid 1000 pi \
+    && useradd --system --uid 1000 --gid 1000 --create-home --shell /usr/local/bin/pi-login pi
+
+# sshd prep: runtime host keys live on a PVC (mounted at /etc/ssh/host-keys).
+# Authorized keys come from a Secret (mounted at /home/pi/.ssh/authorized_keys).
+# Settings go in a drop-in: sshd_config uses first-occurrence-wins, so appending
+# to the main file would lose to the base image's `UsePAM yes`. The drop-in is
+# Included at the top of /etc/ssh/sshd_config, so it takes precedence. PidFile
+# is /tmp because sshd runs as non-root (uid 1000) and cannot write /run.
+RUN mkdir -p /etc/ssh/host-keys /home/pi/.ssh /workspace /shared /etc/ssh/sshd_config.d \
+    && chmod 0755 /etc/ssh/host-keys \
+    && chown -R 1000:1000 /home/pi /workspace /shared \
+    && printf 'Port 2222\n\
+ListenAddress 0.0.0.0\n\
+HostKey /etc/ssh/host-keys/ssh_host_ed25519_key\n\
+HostKey /etc/ssh/host-keys/ssh_host_rsa_key\n\
+PasswordAuthentication no\n\
+PubkeyAuthentication yes\n\
+PermitRootLogin no\n\
+UsePAM no\n\
+AuthorizedKeysFile /home/pi/.ssh/authorized_keys\n\
+PidFile /tmp/sshd.pid\n' > /etc/ssh/sshd_config.d/00-pi.conf
+
+# Runtime tools prefix (~/.local) is a PVC in the chart; make npm/pip use it.
+RUN runuser -u pi -- env HOME=/home/pi npm config set prefix /home/pi/.local
+
+USER 1000
+WORKDIR /workspace
+ENTRYPOINT ["pi"]
+
+############################
+# full — batteries-included variant
+############################
+FROM slim AS full
+USER 0
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        gh jq fzf build-essential python3 python3-pip ffmpeg dnsutils \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -LsSf https://astral.sh/uv/install.sh | sh || true
+USER 1000
+WORKDIR /workspace
+ENTRYPOINT ["pi"]
