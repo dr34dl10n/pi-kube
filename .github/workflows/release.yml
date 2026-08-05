@@ -35,8 +35,8 @@ jobs:
       - name: Read chart versions
         id: chart
         run: |
-          ver="$(grep -E '^version:' charts/pi/Chart.yaml | sed -E 's/.*"?([0-9][^"]*)"?$/\1/')"
-          appver="$(grep -E '^appVersion:' charts/pi/Chart.yaml | sed -E 's/.*"(.*)".*/\1/')"
+          ver="$(grep -E '^version:' charts/pi/Chart.yaml | sed -E 's/^version:[[:space:]]+"?([^"]+)"?[[:space:]]*$/\1/')"
+          appver="$(grep -E '^appVersion:' charts/pi/Chart.yaml | sed -E 's/^appVersion:[[:space:]]+"?([^"]+)"?[[:space:]]*$/\1/')"
           echo "chartversion=$ver"   >> "$GITHUB_OUTPUT"
           echo "appversion=$appver"   >> "$GITHUB_OUTPUT"
           echo "chartVersion=$ver"
@@ -114,7 +114,7 @@ jobs:
 
       - name: Package chart
         run: |
-          ver="$(grep -E '^version:' charts/pi/Chart.yaml | sed -E 's/.*"(.*)".*/\1/')"
+          ver="$(grep -E '^version:' charts/pi/Chart.yaml | sed -E 's/^version:[[:space:]]+"?([^"]+)"?[[:space:]]*$/\1/')"
           helm package charts/pi --version "$ver" --destination .chart-out
 
       - name: Upload chart to the GitHub Release

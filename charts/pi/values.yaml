@@ -16,7 +16,7 @@ image:
   # or build a custom image with `ARG PACKAGES` (see docker/Dockerfile.pi).
   # Default tracks the chart version (this image is versioned with the chart,
   # not with Pi's own npm version — see Chart.yaml appVersion for that pin).
-  tag: "0.2.0"
+  tag: "0.2.1"
   pullPolicy: IfNotPresent
 
 # ---------------------------------------------------------------------------
