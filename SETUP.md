@@ -12,7 +12,7 @@ version (`appVersion`, e.g. 0.83.0) is only pinned *inside* the image.
 
 `charts/pi/values.yaml` defaults to `ghcr.io/dr34dl10n/pi-kube:0.2.0`, so a
 tagged release works out of the box. Override `image.tag` to test a `main`
-snapshot (see §2).
+snapshot (see section 2).
 
 ---
 
@@ -20,11 +20,11 @@ snapshot (see §2).
 
 | # | Requirement | Why | How |
 |---|-------------|-----|-----|
-| 1 | A **StorageClass** | Chart creates 4 PVCs | `kubectl get storageclass` ≥1, else install a provisioner (§3) |
-| 2 | The **`pi` image**, reachable by the cluster | Pod image pull | Published on ghcr — make the package **public**, or add a pull Secret (§2) |
-| 3 | An **SSH public key** (only if exposure != none) | SSH access path | `kubectl create secret … --from-file=authorized_keys` (§0a) |
-| 4 | A **provider login** — *optional* at install | Pi boots to the TUI; `/login` on first connect | nothing at install; or `--set credentials.*` (§0b) |
-| 5 | An **exposure choice** | Pod is isolated by default | `ingress.exposure`: `none`(default)/`wireguard`(recommended)/… (§4) |
+| 1 | A **StorageClass** | Chart creates 4 PVCs | `kubectl get storageclass` ≥1, else install a provisioner (section 3) |
+| 2 | The **`pi` image**, reachable by the cluster | Pod image pull | Published on ghcr — make the package **public**, or add a pull Secret (section 2) |
+| 3 | An **SSH public key** (only if exposure != none) | SSH access path | `kubectl create secret … --from-file=authorized_keys` (section 0a) |
+| 4 | A **provider login** — *optional* at install | Pi boots to the TUI; `/login` on first connect | nothing at install; or `--set credentials.*` (section 0b) |
+| 5 | An **exposure choice** | Pod is isolated by default | `ingress.exposure`: `none`(default)/`wireguard`(recommended)/… (section 4) |
 
 If #1–3 (or #5) are missing, `helm install` "succeeds" but the pod sits in
 `Pending`/`ImagePullBackOff`/`CrashLoopBackOff`. #4 is optional at install.
@@ -93,8 +93,8 @@ kubectl -n "$NS" create secret generic pi-wg \
 ```
 
 > `scripts/prereq-secrets.sh` turns the staged files under `prereq/` (SSH pubkey,
-> WG conf, optional auth.json) into the §0a/§0c Secrets and prints the exact
-> `helm install` command. See §1.3.
+> WG conf, optional auth.json) into the section 0a/section 0c Secrets and prints the exact
+> `helm install` command. See section 1.3.
 
 ---
 
@@ -104,7 +104,7 @@ The `ghcr.io/dr34dl10n/pi-kube` package is **private by default**. Two paths:
 
 ### Path A — make the package public (simplest for a test)
 GitHub → your profile/orga → **Packages** → `pi-kube` → **Package settings** →
-*Danger Zone* → Change visibility → **Public**. No pull Secret needed; skip to §1.2.
+*Danger Zone* → Change visibility → **Public**. No pull Secret needed; skip to section 1.2.
 
 ### Path B — keep it private + imagePullSecret
 The chart wires `global.imagePullSecrets` onto the ServiceAccount, Deployment
@@ -130,7 +130,7 @@ helm install pi ./charts/pi -n "$NS" -f examples/my-values.yaml \
   --set global.imagePullSecrets[0].name=ghcr-pull   # ← Path B only; omit if Path A
 ```
 
-Verify (§5). Once the pod is `2/2 Running` and `pi` shows the TUI, add ingress.
+Verify (section 5). Once the pod is `2/2 Running` and `pi` shows the TUI, add ingress.
 
 ### 1.3 Then — with WireGuard (recommended real access)
 
@@ -147,7 +147,7 @@ scripts/prereq-secrets.sh
 # re-deploy after edits: helm upgrade pi ./charts/pi -n $NS -f prereq/my-values.yaml
 ```
 
-Or the manual equivalent (Secrets from §0a/§0c):
+Or the manual equivalent (Secrets from section 0a/section 0c):
 ```bash
 helm upgrade pi ./charts/pi -n "$NS" -f examples/my-values.yaml \
   --set ingress.exposure=wireguard \
@@ -159,7 +159,7 @@ helm upgrade pi ./charts/pi -n "$NS" -f examples/my-values.yaml \
 
 The WG sidecar (`ghcr.io/linuxserver/wireguard`, client mode) reads `wg0.conf`
 from `/config/wg_confs` and dials out to your WG server — zero cluster ports.
-See `charts/pi/README.md` §Ingress for `tailscale`/`cloudflare`/`loadbalancer`.
+See `charts/pi/README.md` section Ingress for `tailscale`/`cloudflare`/`loadbalancer`.
 
 ---
 

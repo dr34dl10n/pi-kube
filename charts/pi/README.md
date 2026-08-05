@@ -8,7 +8,7 @@ optional GPU.
 ## Quick start
 
 Prerequisites: a cluster with a StorageClass and the image built/pullable
-(see repo `SETUP.md` §0–§2). Create the two Secrets the default install needs:
+(see repo `SETUP.md` sections 0–2). Create the two Secrets the default install needs:
 
 ```bash
 kubectl create namespace pi
@@ -24,7 +24,7 @@ kubectl -n pi create secret generic pi-wg \
 ```bash
 # Default: interactive mode, `none` exposure (kubectl exec), sshd disabled, 3 PVCs.
 # WireGuard is the recommended exposure for real access (zero public ports) —
-# see §Ingress. Set ingress.exposure=wireguard + ingress.wireguard.configSecret.
+# see section Ingress. Set ingress.exposure=wireguard + ingress.wireguard.configSecret.
 helm install pi ./charts/pi -n pi \
   --set ingress.wireguard.configSecret=pi-wg \
   --set ingress.ssh.authorizedKeysSecret=pi-ssh-keys
@@ -36,7 +36,7 @@ Then reach the pod. With the default (`exposure: none`) use `kubectl exec`:
 kubectl -n pi exec -it deploy/pi -c pi -- bash -lc pi
 ```
 
-Or pick an exposure mode (see §Ingress). With WireGuard (recommended, zero public
+Or pick an exposure mode (see section Ingress). With WireGuard (recommended, zero public
 ports), create the Secret and SSH in — you land in a tmux session running `pi`:
 
 ```bash

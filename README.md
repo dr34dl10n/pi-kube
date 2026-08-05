@@ -40,7 +40,7 @@ scripts/prereq-secrets.sh
 ```
 
 The script creates the namespace + Secrets and prints the exact `helm install`
-command to run next. Want the why behind each prereq? See `SETUP.md` §0.
+command to run next. Want the why behind each prereq? See `SETUP.md` section 0.
 
 > Prefer doing it by hand? `SETUP.md` has the raw `kubectl create secret` for
 > each mode (SSH keys, WG, tailscale, cloudflare, headless API keys).
@@ -80,7 +80,7 @@ ssh -p 2222 pi@<pod-tunnel-ip>      # the Address from your wg.conf
 
 You land in a `tmux` session running Pi. 🎉 All exposure modes
 (`wireguard` / `tailscale` / `cloudflare` / `loadbalancer` / `none`) are
-documented in `charts/pi/README.md` §Ingress.
+documented in `charts/pi/README.md` section Ingress.
 
 ---
 
@@ -92,7 +92,7 @@ documented in `charts/pi/README.md` §Ingress.
 
 Then it's just Pi: extensions, skills, themes, sessions — all preserved on the
 home PVC. First-run validation tips and the `kubectl exec` fallback are in
-`SETUP.md` §5.
+`SETUP.md` section 5.
 
 ---
 
@@ -127,7 +127,7 @@ image:
 ```
 
 Private package? Make it public for a test, or wire a pull Secret
-(`global.imagePullSecrets`) — see `SETUP.md` §1.
+(`global.imagePullSecrets`) — see `SETUP.md` section 1.
 
 ## 🧭 Modes
 
