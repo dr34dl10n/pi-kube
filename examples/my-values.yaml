@@ -44,4 +44,4 @@ ingress:
 
 #image:
 #  repository: ghcr.io/dr34dl10n/pi-kube
-#  tag: "0.83.0"   # "0.83.0-full" for batteries-included
+#  tag: "0.2.0"   # "0.2.0-full" for batteries-included

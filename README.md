@@ -1,16 +1,25 @@
-# pi-kube — run your [Pi Coding Agent](https://github.com/earendil-works/pi) on Kubernetes 🤖⚓
+# pi-kube — expose your [Pi Coding Agent](https://github.com/earendil-works/pi) on Kubernetes, the easy & secure way 🤖⚓
 
-A community Helm chart that drops Pi (`@earendil-works/pi-coding-agent`) into a pod
-with everything it loves kept intact: interactive TUI, headless RPC/JSON/print
-modes, extensions/skills/themes, sessions, optional GPU.
+**Goal:** take a running [Pi Coding Agent](https://github.com/earendil-works/pi)
+harness and expose it on a Kubernetes cluster *simply* and *securely* — no
+manual YAML juggling, no cluster ports left open by default. One Helm chart,
+sane isolation defaults, and your agent is reachable over SSH / WireGuard in
+minutes.
 
-> Nobody had packaged Pi for Kubernetes yet — so here we are. ✨
+> 🙏 **BigUp** to [Pi](https://github.com/earendil-works/pi)
+> ([`@earendil-works/pi-coding-agent`](https://www.npmjs.com/package/@earendil-works/pi-coding-agent))
+> — without it this chart is just empty templates. Go star it. ⭐
 
-The flow is four steps, top to bottom:
+### What is Pi?
 
-```
-PREREQ → HELM → SSH → your Pi agent
-```
+Pi is a modern coding-agent **harness** (not just a chat client): it runs the
+agent loop, manages sessions, mounts skills / themes / extensions, and talks to
+*any* LLM provider. It ships an interactive TUI for hands-on work and headless
+modes (RPC / JSON / print) for automation, keeps your config and sessions on
+disk, and runs entirely on your own machine. Among today's agent harnesses it's
+a genuine monster — provider-agnostic, scriptable, and built for real daily
+driving, not demos. **pi-kube exists to put that monster in a pod you can reach
+from anywhere.**
 
 ---
 
@@ -89,8 +98,10 @@ home PVC. First-run validation tips and the `kubectl exec` fallback are in
 
 ## 🐳 The container image
 
-`ghcr.io/dr34dl10n/pi-kube:<appVersion>` is **built from this repo** (not the
-upstream npm image), via `charts/pi/docker/Dockerfile.pi`.
+`ghcr.io/dr34dl10n/pi-kube:<chartVersion>` is **built from this repo** (not the
+upstream npm image), via `charts/pi/docker/Dockerfile.pi`. The image is versioned
+with the **chart** (`Chart.yaml` `version`); Pi's own npm version lives in
+`appVersion` and is pinned inside the image — don't conflate the two.
 
 ```bash
 scripts/build-image.sh                      # slim, local
@@ -100,19 +111,19 @@ VARIANT=custom PACKAGES="terraform helm kubectl" PUSH=1 scripts/build-image.sh
 
 | Variant | Tag pattern            | Use                          |
 |---------|-----------------------|------------------------------|
-| slim    | `:<appVersion>`       | default chart image           |
-| full    | `:<appVersion>-full`  | batteries-included toolchain  |
-| custom  | `:<appVersion>-custom`| your own apt packages         |
+| slim    | `:<chartVersion>`       | default chart image           |
+| full    | `:<chartVersion>-full`  | batteries-included toolchain  |
+| custom  | `:<chartVersion>-custom`| your own apt packages         |
 
 CI (`.github/workflows/release.yml`) publishes `slim` + `full`
-(linux/amd64 + arm64) on `v*` tags (`:<appVersion>`, `:latest`, `:-full`) and on
-`main` snapshots (`:<appVersion>-<sha>`). The chart's `image.repository` already
+(linux/amd64 + arm64) on `v*` tags (`:<chartVersion>`, `:latest`, `:-full`) and on
+`main` snapshots (`:<chartVersion>-<sha>`). The chart's `image.repository` already
 points at ghcr — just pick `image.tag`.
 
 ```yaml
 image:
   repository: ghcr.io/dr34dl10n/pi-kube
-  tag: "0.83.0"        # or "0.83.0-full"
+  tag: "0.2.0"        # or "0.2.0-full"
 ```
 
 Private package? Make it public for a test, or wire a pull Secret
@@ -144,8 +155,10 @@ pi-kube/
 - **Operational setup / from-scratch deploy test:** `SETUP.md`
 - **Values reference:** `charts/pi/values.yaml`
 
-## ⚠️ Status
+## 🚧 In Development
 
-Early / community. The chart renders lint-clean and has been deployed
-end-to-end on a bare-metal cluster (`SETUP.md`), but the image isn't on a
-public registry yet and there are no release guarantees. PRs welcome. 🛠️
+This chart is early / community work. It renders lint-clean and has been
+deployed end-to-end on a bare-metal cluster (see `SETUP.md`), and images are
+published to `ghcr.io/dr34dl10n/pi-kube` by CI — but there are **no stability or
+backward-compatibility guarantees yet**, and values / APIs may move between
+releases. Use it, break it, send PRs. 🛠️

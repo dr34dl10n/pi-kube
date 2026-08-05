@@ -12,11 +12,11 @@
 #   # slim, local build only (no push)
 #   scripts/build-image.sh
 #
-#   # full variant, multi-arch, push to ghcr.io/<owner>/pi-kube:0.83.0-full
+#   # full variant, multi-arch, push to ghcr.io/<owner>/pi-kube:0.2.0-full
 #   VARIANT=full PLATFORMS=linux/amd64,linux/arm64 PUSH=1 scripts/build-image.sh
 #
 #   # custom variant with extra apt packages
-#   VARIANT=custom PACKAGES="terraform helm kubectl" TAG=0.83.0-custom \
+#   VARIANT=custom PACKAGES="terraform helm kubectl" TAG=0.2.0-custom \
 #     PUSH=1 scripts/build-image.sh
 #
 #   # point at your own registry
@@ -53,8 +53,15 @@ if [[ ! -f "$DOCKERFILE" ]]; then
   exit 1
 fi
 
-# --- Derive appVersion from Chart.yaml (single source of truth for the tag) ---
+# --- Derive chart version (image tag base) + appVersion (Pi npm pin) --------
+# The image is versioned with the chart (`version`), while the Pi npm package
+# pinned in the Dockerfile is the chart's `appVersion`. Don't conflate the two.
+CHART_VERSION="$(grep -E '^version:' charts/pi/Chart.yaml | sed -E 's/.*"?([0-9][^"]*)"?$/\1/')"
 APP_VERSION="$(grep -E '^appVersion:' charts/pi/Chart.yaml | sed -E 's/.*"(.*)".*/\1/')"
+if [[ -z "$CHART_VERSION" ]]; then
+  echo "error: could not read version from charts/pi/Chart.yaml" >&2
+  exit 1
+fi
 if [[ -z "$APP_VERSION" ]]; then
   echo "error: could not read appVersion from charts/pi/Chart.yaml" >&2
   exit 1
@@ -75,7 +82,7 @@ fi
 
 # --- Build the tag ---
 if [[ -z "${TAG:-}" ]]; then
-  TAG="$APP_VERSION"
+  TAG="$CHART_VERSION"
   if [[ "$VARIANT" == "full" ]]; then
     TAG="${TAG}-full"
   elif [[ "$VARIANT" == "custom" ]]; then

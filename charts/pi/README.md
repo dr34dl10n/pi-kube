@@ -114,15 +114,15 @@ a custom image (Level 1).
 
 ```bash
 # slim (default chart image)
-docker build --target slim -t ghcr.io/dr34dl10n/pi-kube:0.83.0 -f docker/Dockerfile.pi .
+docker build --target slim -t ghcr.io/dr34dl10n/pi-kube:0.2.0 -f docker/Dockerfile.pi .
 # full (batteries included)
-docker build --target full -t ghcr.io/dr34dl10n/pi-kube:0.83.0-full -f docker/Dockerfile.pi .
+docker build --target full -t ghcr.io/dr34dl10n/pi-kube:0.2.0-full -f docker/Dockerfile.pi .
 # custom (your own apt packages)
 docker build --build-arg PACKAGES="terraform helm kubectl" \
-             -t myorg/pi-kube:0.83.0-custom -f docker/Dockerfile.pi .
+             -t myorg/pi-kube:0.2.0-custom -f docker/Dockerfile.pi .
 ```
 
-Select with `image.tag` (e.g. `0.83.0-full`) or point `image.repository` at your custom image.
+Select with `image.tag` (e.g. `0.2.0-full`) or point `image.repository` at your custom image.
 
 ## No backups in v1
 

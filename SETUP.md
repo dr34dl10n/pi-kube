@@ -4,10 +4,13 @@ What you run, not why (design rationale is in `charts/pi/README.md`).
 
 The container image is published by CI (`.github/workflows/release.yml`):
 
-- on `v*` tags → `ghcr.io/dr34dl10n/pi-kube:<appVersion>` (+ `:latest`, `:-full`)
-- on pushes to `main` → snapshot `ghcr.io/dr34dl10n/pi-kube:<appVersion>-<sha7>` (+ `-full`)
+- on `v*` tags → `ghcr.io/dr34dl10n/pi-kube:<chartVersion>` (+ `:latest`, `:-full`)
+- on pushes to `main` → snapshot `ghcr.io/dr34dl10n/pi-kube:<chartVersion>-<sha7>` (+ `-full`)
 
-`charts/pi/values.yaml` defaults to `ghcr.io/dr34dl10n/pi-kube:0.83.0`, so a
+The image is versioned with the **chart** (`Chart.yaml` `version`); Pi's own npm
+version (`appVersion`, e.g. 0.83.0) is only pinned *inside* the image.
+
+`charts/pi/values.yaml` defaults to `ghcr.io/dr34dl10n/pi-kube:0.2.0`, so a
 tagged release works out of the box. Override `image.tag` to test a `main`
 snapshot (see §2).
 
@@ -162,16 +165,16 @@ See `charts/pi/README.md` §Ingress for `tailscale`/`cloudflare`/`loadbalancer`.
 
 ## 2. The container image
 
-Published by CI on `v*` tags (`:<appVersion>`, `:latest`, `:-full`) and on `main`
-(`:<appVersion>-<sha7>` snapshot). `values.yaml` defaults to `0.83.0`.
+Published by CI on `v*` tags (`:<chartVersion>`, `:latest`, `:-full`) and on `main`
+(`:<chartVersion>-<sha7>` snapshot). `values.yaml` defaults to `0.2.0`.
 
 ```bash
 # release (from a v* tag) — the chart default:
---set image.tag="0.83.0"
+--set image.tag="0.2.0"
 # latest main snapshot (check the Actions "Resolve tags" step for the exact sha):
---set image.tag="0.83.0-<sha7>"
+--set image.tag="0.2.0-<sha7>"
 # batteries-included variant (fd, fzf, …):
---set image.tag="0.83.0-full"
+--set image.tag="0.2.0-full"
 ```
 
 > `:latest` is only pushed on `v*` tags — never trust it to track `main`.

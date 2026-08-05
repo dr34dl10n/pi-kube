@@ -13,6 +13,9 @@
 # Options:
 #   --namespace NS    namespace (default: pi-kube)
 #   --release NAME    helm release name (default: pi) — only used in the printed command
+#   --image-tag TAG   override image.tag (default: <chart appVersion>-<git short sha>,
+#                     matching the tags the release workflow publishes on push to main)
+#                     (base = chart version, NOT Pi's appVersion — those are decoupled))
 #   -h, --help
 #
 # What it does: create namespace + secrets (idempotent), then print `helm install`.
@@ -25,12 +28,14 @@ EXAMPLE_VALUES="$REPO_DIR/examples/my-values.yaml"
 
 namespace="pi-kube"
 release="pi"
+image_tag=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
     -h|--help) sed -n '3,/^$/p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     --namespace) namespace="${2:?--namespace needs a NS}"; shift 2 ;;
     --release) release="${2:?--release needs a NAME}"; shift 2 ;;
+    --image-tag) image_tag="${2:?--image-tag needs a TAG}"; shift 2 ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;
   esac
 done
@@ -77,10 +82,21 @@ make_secret() {  # name key file
 [ -f "$wg_conf" ]   && make_secret pi-wg       wg0.conf        "$wg_conf"
 [ -f "$auth_json" ] && make_secret pi-auth     auth.json       "$auth_json"
 
+# --- Resolve image tag (default: <chartVersion>-<git short sha>) ------------
+# The release workflow publishes :<ver>-<sha> on every push to main; the chart
+# default image.tag (bare chart version) exists only after a v* tag release, so
+# we set it explicitly for main-snapshot deploys. Override with --image-tag.
+if [ -z "$image_tag" ]; then
+  chartver="$(grep -E '^version:' "$REPO_DIR/charts/pi/Chart.yaml" | sed -E 's/^version:[[:space:]]*"?([^"]+)"?/\1/')"
+  sha="$(git -C "$REPO_DIR" rev-parse --short HEAD 2>/dev/null || true)"
+  image_tag="${chartver}${sha:+-$sha}"
+fi
+
 # --- Print the helm install command --------------------------------------
 echo
 echo "Prereqs ready. Run:"
-echo "  helm install $release ./charts/pi -n $namespace -f $values"
+echo "  helm install $release ./charts/pi -n $namespace -f $values \\
+    --set image.tag=$image_tag"
 [ -f "$auth_json" ] && echo "    --set credentials.authJsonSecret=pi-auth"
 echo
 echo "Then wait for rollout:"
