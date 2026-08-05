@@ -17,7 +17,7 @@ snapshot (see §2).
 
 | # | Requirement | Why | How |
 |---|-------------|-----|-----|
-| 1 | A **StorageClass** (or static PVs) | Chart creates 4 PVCs | `kubectl get storageclass` ≥1, else install a provisioner (§3) |
+| 1 | A **StorageClass** | Chart creates 4 PVCs | `kubectl get storageclass` ≥1, else install a provisioner (§3) |
 | 2 | The **`pi` image**, reachable by the cluster | Pod image pull | Published on ghcr — make the package **public**, or add a pull Secret (§2) |
 | 3 | An **SSH public key** (only if exposure != none) | SSH access path | `kubectl create secret … --from-file=authorized_keys` (§0a) |
 | 4 | A **provider login** — *optional* at install | Pi boots to the TUI; `/login` on first connect | nothing at install; or `--set credentials.*` (§0b) |
@@ -159,45 +159,25 @@ Published by CI on `v*` tags (`:<appVersion>`, `:latest`, `:-full`) and on `main
 ```
 
 > `:latest` is only pushed on `v*` tags — never trust it to track `main`.
-
-**Build your own** (custom packages / private registry):
-```bash
-# slim (default) / full / custom packages — always pass --target explicitly:
-docker build --target slim -t <registry>/pi-kube:0.83.0-slim -f charts/pi/docker/Dockerfile.pi .
-docker build --target full  -t <registry>/pi-kube:0.83.0-full -f charts/pi/docker/Dockerfile.pi .
-docker build --build-arg PACKAGES="terraform helm kubectl" --target slim \
-             -t <registry>/pi-kube:0.83.0-custom -f charts/pi/docker/Dockerfile.pi .
-# multi-arch: add --platform linux/amd64,linux/arm64
-```
-> Without `--target`, the last stage (`full`) is built — mismatches a `-slim` tag.
-Then `--set image.repository=<registry>/pi-kube --set image.tag=…` and add
-`global.imagePullSecrets` if the registry is private.
-
-**Offline / no-registry cluster** (advanced): kaniko in-cluster build → in-cluster
-`registry:2` → DaemonSet pre-loading each node's containerd with
-`ctr … pull --plain-http` + `ctr images tag` to the DNS ref in `image.repository`,
-and `image.pullPolicy: IfNotPresent`. ⚠️ **Bump the tag** to bust `IfNotPresent`
-cache after a rebuild (same tag can serve stale layers). See `scripts/build-image.sh`.
+>
+> Building your own image (custom packages / private registry / offline cluster)
+> is covered in `research/deploy-notes.md`.
 
 ---
 
 ## 3. Cluster prerequisites
 
 ```bash
-kubectl get nodes         # 1.20+ ; tested on v1.35
-kubectl get storageclass  # MUST return ≥1, or see below
+kubectl get nodes         # 1.20+
+kubectl get storageclass  # MUST return ≥1
 ```
 
 **No StorageClass** → the 4 PVCs stay `Pending`, pod never schedules.
 Install a provisioner (Rancher local-path, longhorn, …) and leave
-`persistence.*.storageClassName: ""` (cluster default). This is the happy path.
+`persistence.*.storageClassName: ""` (cluster default).
 
-**Workaround — static hostPath PVs:** pre-create dirs owned `1000:1000` on one
-node (the chart runs as `pi:1000`; `fsGroup` does **not** chown hostPath), then
-static PVs with `claimRef` pre-bound to the chart's PVC names
-(`<release>-home/workspace/local-tools/ssh-host-keys`, `storageClassName: ""`),
-and pin the pod with `--set nodeSelector.kubernetes\.io/hostname=<node>`.
-Gotcha: mount the host dir at a non-`/tmp` path or you create `/tmp/tmp/<dir>`.
+> Running on a bare-metal cluster with no StorageClass (static hostPath PVs) is
+> covered in `research/deploy-notes.md`.
 
 ---
 
@@ -210,6 +190,10 @@ Gotcha: mount the host dir at a non-`/tmp` path or you create `/tmp/tmp/<dir>`.
 | `loadbalancer` | `type: LoadBalancer` + firewall | `ssh -p 2222 pi@<EXTERNAL-IP>` |
 | `tailscale` | Secret `authKey` | `ssh -p 2222 pi@<tailnet-ip>` |
 | `cloudflare` | Secret `token` | sshd over a Cloudflare tunnel |
+
+> If your cluster is **already** behind a VPN/WireGuard at the node level, use
+> `loadbalancer`: no pod-side sidecar, SSH on the LB/NodePort, reachable from
+> inside the existing tunnel (see `examples/my-values.yaml`).
 
 **LB without a provisioner:** `pi-ssh` gets `EXTERNAL-IP <pending>` but still
 allocates a **NodePort** — reach it on any node: `ssh -p <NodePort> pi@<node-ip>`.
@@ -236,39 +220,19 @@ kubectl -n pi-kube exec -it deploy/pi -c pi -- bash -lc pi
 If SSH/WireGuard is up:
 ```bash
 NODEPORT=$(kubectl -n pi-kube get svc pi-ssh -o jsonpath='{.spec.ports[0].nodePort}')
-ssh -p $NODEPORT -i ~/.ssh/pi_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -t pi@<node-ip>
+ssh -p $NODEPORT -i ~/.ssh/pi_key -o StrictHostKeyChecking=no \
+    -o UserKnownHostsFile=/dev/null -t pi@<node-ip>
 ```
 Success: pod `2/2 Running` (containers `pi` + sshd sidecar); `pi` shows the TUI
 with model + prompt visible.
 
 ---
 
-## 6. Gotchas
-
-- **No StorageClass → PVCs Pending.** Provisioner, or static PVs (§3).
-- **Private ghcr → ImagePullBackOff.** Make the package public (Path A) or add
-  `global.imagePullSecrets` (Path B, §1).
-- **hostPath ownership:** `fsGroup` won't chown hostPath — pre-create `1000:1000`.
-- **`LoadBalancer` w/o provisioner** still exposes a NodePort — use it, don't `port-forward`.
-- **Bump the image tag** to bust `IfNotPresent` cache after a rebuild.
-- **sshd config is a drop-in** (`/etc/ssh/sshd_config.d/00-pi.conf`) — `sshd_config`
-  is first-occurrence-wins; the base image has `UsePAM yes` earlier. Don't append to main.
-- **`pi-login` shebang `#!/bin/sh` is required** — sshd execs the login shell via the
-  kernel; no shebang → `ENOEXEC` → channel closes right after auth.
-- **`SHELL=/bin/sh` in the pi env** — so tmux runs pane commands (`cd /workspace && exec pi`)
-  with a real shell, not `pi-login` (ignores `-c`, kills session on EOF).
-- **`slim` image lacks `fd`** — Pi logs a cosmetic "offline mode" warning at startup.
-  Use `full` for `fd`/`fzf`.
-
----
-
-## 7. Cleanup
+## 6. Cleanup
 
 ```bash
 helm uninstall pi -n pi-kube
 kubectl delete ns pi-kube --wait=false
-kubectl delete pv pv-pi-home pv-pi-workspace pv-pi-local-tools pv-pi-ssh-hostkeys --wait=false
-# hostPath dirs on the pinned node: privileged pod `rm -rf /hosttmp/pi-*`
 ```
-`helm uninstall` does NOT delete PVCs (reclaim `Retain`). Commit/push `/workspace`
-first — there are no backups in v1.
+`helm uninstall` does NOT delete PVCs (reclaim `Retain`). Back up `/workspace`
+before uninstall — there are no backups in v1.

@@ -1,6 +1,9 @@
 # Local build / kaniko scratch context (test manifests + throwaway SSH keys)
 .kaniko-ctx/
 
+# Local copy of install values (cp examples/my-values.yaml my-values.yaml)
+my-values.yaml
+
 # Helm package output (helm package charts/pi -> ./pi-<version>.tgz)
 *.tgz
 
