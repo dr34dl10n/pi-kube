@@ -52,6 +52,16 @@ ingress:
   wireguard:
     configSecret: pi-wg
 
+  # --- Alternatives (pick ONE exposure value, comment the rest) ---------
+
+  # Cluster already protected by an existing WireGuard/Tailscale/VPN at the
+  # node level: the pod needs no sidecar of its own. sshd runs, SSH is exposed
+  # on a LoadBalancer Service (or a NodePort if no LB provisioner), reachable
+  # from inside the existing tunnel. No ingress.wireguard.configSecret needed.
+  # exposure: loadbalancer
+  # ssh:
+  #   authorizedKeysSecret: pi-ssh-keys
+
   # Simplest alternative: no sshd, reach the pod with kubectl exec.
   # exposure: none
 
