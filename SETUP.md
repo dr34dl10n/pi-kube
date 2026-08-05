@@ -89,8 +89,9 @@ kubectl -n "$NS" create secret generic pi-wg \
   --from-file=wg0.conf=pi-client.conf
 ```
 
-> `scripts/deploy.sh` does all of §0a + §0c + the `helm install` for you, per
-> exposure mode. See §1.3.
+> `scripts/prereq-secrets.sh` turns the staged files under `prereq/` (SSH pubkey,
+> WG conf, optional auth.json) into the §0a/§0c Secrets and prints the exact
+> `helm install` command. See §1.3.
 
 ---
 
@@ -130,12 +131,17 @@ Verify (§5). Once the pod is `2/2 Running` and `pi` shows the TUI, add ingress.
 
 ### 1.3 Then — with WireGuard (recommended real access)
 
-The `scripts/deploy.sh` helper builds the SSH + WG Secrets and runs `helm`
-for you:
+Stage your files under `prereq/` and let the helper build the Secrets for you,
+then run the `helm install` it prints:
 ```bash
-./scripts/deploy.sh wireguard --ssh-key ~/.ssh/pi_key.pub --wg-conf pi-client.conf
-# Path B (private ghcr): add --pull-secret ghcr-pull
-# re-deploy after edits: add --upgrade
+mkdir prereq
+cp examples/my-values.yaml prereq/my-values.yaml
+cp ~/.ssh/pi_key.pub     prereq/ssh_key.pub
+cp pi-client.conf        prereq/wg.conf
+# Path B (private ghcr): edit prereq/my-values.yaml to add imagePullSecrets
+scripts/prereq-secrets.sh
+# → creates pi-ssh-keys + pi-wg, prints: helm install pi ./charts/pi -n pi-kube -f prereq/my-values.yaml
+# re-deploy after edits: helm upgrade pi ./charts/pi -n $NS -f prereq/my-values.yaml
 ```
 
 Or the manual equivalent (Secrets from §0a/§0c):

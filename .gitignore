@@ -4,6 +4,9 @@
 # Local copy of install values (cp examples/my-values.yaml my-values.yaml)
 my-values.yaml
 
+# Staged prereqs for scripts/prereq-secrets.sh (secrets material + local values)
+prereq/
+
 # Helm package output (helm package charts/pi -> ./pi-<version>.tgz)
 *.tgz
 

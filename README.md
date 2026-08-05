@@ -1,83 +1,113 @@
-# pi-kube — run [Pi Coding Agent](https://github.com/earendil-works/pi) on Kubernetes
+# pi-kube — run your [Pi Coding Agent](https://github.com/earendil-works/pi) on Kubernetes 🤖⚓
 
-A community Helm chart to run Pi (`@earendil-works/pi-coding-agent`) in a pod,
-preserving all of its features: interactive TUI, headless RPC/JSON/print modes,
-extensions/skills/themes, sessions, and optional GPU.
+A community Helm chart that drops Pi (`@earendil-works/pi-coding-agent`) into a pod
+with everything it loves kept intact: interactive TUI, headless RPC/JSON/print
+modes, extensions/skills/themes, sessions, optional GPU.
 
-> No one has packaged Pi for Kubernetes yet — this is that project.
+> Nobody had packaged Pi for Kubernetes yet — so here we are. ✨
 
-## Repo layout
+The flow is four steps, top to bottom:
 
 ```
-pi-kube/
-├── charts/pi/              # the Helm chart (Chart.yaml, templates/, values.yaml, README)
-│   └── docker/            # Dockerfile.pi + pi-shell/pi-login wrapper scripts
-├── scripts/build-image.sh # build/push the container image (slim/full/custom)
-├── examples/my-values.yaml # minimal install values
-├── .github/workflows/      # CI: build & push image to ghcr + package the chart
-└── SETUP.md                # operational guide from a from-scratch deploy test
+PREREQ → HELM → SSH → your Pi agent
 ```
 
-## Quick start
+---
 
-1. **Install the chart** (you need a cluster with a StorageClass):
+## 🧩 PREREQ — stage what the pod needs
 
-   ```bash
-   helm install pi ./charts/pi -f examples/my-values.yaml
-   ```
-
-   No API key needed at install: SSH in, run `pi`, then `/login` in the TUI —
-   `auth.json` is persisted on the home PVC. (Inject a key only for headless/Job
-   runs.)
-
-   `examples/my-values.yaml` carries the install-time choices (exposure,
-   ssh keys, persistence sizes) so you don't `--set` everything by hand. Copy
-   it and edit. The full field reference with rationale is
-   `charts/pi/values.yaml`.
-
-2. **Reach the pod.** It's unreachable from outside the cluster unless you
-   tunnel in. The default exposure is `none` (safest — reach the pod with
-   `kubectl exec`). WireGuard is the recommended exposure for real access (pod
-   dials out — zero public ports). See `charts/pi/README.md` §Ingress for all
-   modes (`wireguard`, `tailscale`, `cloudflare`, `loadbalancer`, `none`).
-
-## The container image
-
-The image `ghcr.io/dr34dl10n/pi-kube:<appVersion>` is **built from this repo** from
-`charts/pi/docker/Dockerfile.pi`. It is not the upstream Pi npm package image.
-
-Build it locally (slim/full/custom, optional multi-arch + push):
+The pod wants three small things (two are optional, depends on how you reach it):
+an SSH pubkey, a WireGuard client config, and — only if you're going headless —
+an `auth.json`. You stage them as plain files under `prereq/`, then one script
+turns them into the K8s Secrets the chart expects.
 
 ```bash
-# slim, local only
-scripts/build-image.sh
+mkdir prereq
+cp examples/my-values.yaml prereq/my-values.yaml      # edit exposure / sizes if you like
+cp ~/.ssh/id_ed25519.pub  prereq/ssh_key.pub           # required for wireguard & loadbalancer
+cp pi-client.conf          prereq/wg.conf             # required for wireguard (your WG peer config)
+cp ~/.pi/agent/auth.json   prereq/auth.json           # optional — pre-seeds login (read-only)
+scripts/prereq-secrets.sh
+```
 
-# full variant, push to ghcr (requires docker login to ghcr.io)
-VARIANT=full PUSH=1 scripts/build-image.sh
+The script creates the namespace + Secrets and prints the exact `helm install`
+command to run next. Want the why behind each prereq? See `SETUP.md` §0.
 
-# custom variant with extra apt packages baked in
+> Prefer doing it by hand? `SETUP.md` has the raw `kubectl create secret` for
+> each mode (SSH keys, WG, tailscale, cloudflare, headless API keys).
+
+---
+
+## ⛵ HELM — install the chart
+
+Just run the command the script printed. It looks like:
+
+```bash
+helm install pi ./charts/pi -n pi-kube -f prereq/my-values.yaml
+#   --set credentials.authJsonSecret=pi-auth   # only if you staged auth.json
+```
+
+That's it — no API key needed at install for the interactive case. SSH in, run
+`pi`, then `/login` in the TUI; `auth.json` lands on the home PVC and survives
+restarts. (Inject a key only for headless/Job runs.)
+
+`examples/my-values.yaml` carries your install-time choices (exposure, ssh,
+persistence sizes) so you don't `--set` everything by hand. The full field
+reference + rationale lives in `charts/pi/values.yaml`.
+
+---
+
+## 🔌 SSH — reach the pod
+
+The pod is isolated by default (`exposure: none` → `kubectl exec`). For real
+access, WireGuard is the sweet spot: the pod dials *out* to your WG server, so
+**zero cluster ports** get exposed.
+
+```bash
+# once rollout is done:
+kubectl -n pi-kube rollout status deploy/pi --timeout=180s
+ssh -p 2222 pi@<pod-tunnel-ip>      # the Address from your wg.conf
+```
+
+You land in a `tmux` session running Pi. 🎉 All exposure modes
+(`wireguard` / `tailscale` / `cloudflare` / `loadbalancer` / `none`) are
+documented in `charts/pi/README.md` §Ingress.
+
+---
+
+## 🤖 Your Pi agent — `/login` and go
+
+```bash
+/login        # in the TUI — writes auth.json on the PVC, persists across restarts
+```
+
+Then it's just Pi: extensions, skills, themes, sessions — all preserved on the
+home PVC. First-run validation tips and the `kubectl exec` fallback are in
+`SETUP.md` §5.
+
+---
+
+## 🐳 The container image
+
+`ghcr.io/dr34dl10n/pi-kube:<appVersion>` is **built from this repo** (not the
+upstream npm image), via `charts/pi/docker/Dockerfile.pi`.
+
+```bash
+scripts/build-image.sh                      # slim, local
+VARIANT=full PUSH=1 scripts/build-image.sh  # full variant → push to ghcr
 VARIANT=custom PACKAGES="terraform helm kubectl" PUSH=1 scripts/build-image.sh
 ```
 
-Tag conventions (derived from `charts/pi/Chart.yaml` `appVersion`):
+| Variant | Tag pattern            | Use                          |
+|---------|-----------------------|------------------------------|
+| slim    | `:<appVersion>`       | default chart image           |
+| full    | `:<appVersion>-full`  | batteries-included toolchain  |
+| custom  | `:<appVersion>-custom`| your own apt packages         |
 
-| Variant | Tag pattern              | Use                         |
-|---------|--------------------------|-----------------------------|
-| slim    | `:<appVersion>`          | default chart image         |
-| full    | `:<appVersion>-full`     | batteries-included toolchain |
-| custom  | `:<appVersion>-custom`   | your own apt packages        |
-
-### Publishing to ghcr.io
-
-The `.github/workflows/release.yml` workflow builds the `slim` + `full`
-variants (linux/amd64 + linux/arm64) and pushes them to
-`ghcr.io/dr34dl10n/pi-kube` on:
-
-- **`v*` tags** → release tags (`:<appVersion>`, `:<appVersion>-full`, `:latest`).
-- **pushes to `main`** → snapshot tags (`:<appVersion>-<sha>`).
-
-To use the published image, the chart's `image.repository` default already
-points at `ghcr.io/dr34dl10n/pi-kube`; just pick the right `image.tag`:
+CI (`.github/workflows/release.yml`) publishes `slim` + `full`
+(linux/amd64 + arm64) on `v*` tags (`:<appVersion>`, `:latest`, `:-full`) and on
+`main` snapshots (`:<appVersion>-<sha>`). The chart's `image.repository` already
+points at ghcr — just pick `image.tag`.
 
 ```yaml
 image:
@@ -85,7 +115,10 @@ image:
   tag: "0.83.0"        # or "0.83.0-full"
 ```
 
-## Modes
+Private package? Make it public for a test, or wire a pull Secret
+(`global.imagePullSecrets`) — see `SETUP.md` §1.
+
+## 🧭 Modes
 
 | `pi.mode`     | Workload   | Access                         |
 |---------------|------------|-------------------------------|
@@ -94,14 +127,25 @@ image:
 | `print`       | Job        | `kubectl logs`                 |
 | `json`        | Job        | `kubectl logs` (JSONL)         |
 
-## Documentation
+## 📚 Repo layout & docs
 
-- **Chart design & rationale:** `charts/pi/README.md`.
-- **Operational setup / from-scratch deploy test:** `SETUP.md`.
-- **Values reference:** `charts/pi/values.yaml`.
+```
+pi-kube/
+├── charts/pi/               # the Helm chart (templates, values.yaml, README)
+│   └── docker/             # Dockerfile.pi + pi-shell/pi-login wrappers
+├── scripts/
+│   ├── prereq-secrets.sh    # stage files → K8s secrets, prints helm command
+│   └── build-image.sh       # build/push the image (slim/full/custom)
+├── examples/my-values.yaml  # minimal install values
+└── .github/workflows/       # CI: build image + package the chart
+```
 
-## Status
+- **Chart design & rationale:** `charts/pi/README.md`
+- **Operational setup / from-scratch deploy test:** `SETUP.md`
+- **Values reference:** `charts/pi/values.yaml`
+
+## ⚠️ Status
 
 Early / community. The chart renders lint-clean and has been deployed
-end-to-end on a bare-metal cluster (see `SETUP.md`), but the image is not yet
-published on a public registry and there are no release guarantees.
+end-to-end on a bare-metal cluster (`SETUP.md`), but the image isn't on a
+public registry yet and there are no release guarantees. PRs welcome. 🛠️
