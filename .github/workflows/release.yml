@@ -103,6 +103,8 @@ jobs:
     if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     needs: image
+    permissions:
+      contents: write  # action-gh-release needs this to create the GitHub release
     steps:
       - uses: actions/checkout@v4
 
