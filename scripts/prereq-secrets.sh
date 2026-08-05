@@ -70,7 +70,7 @@ kubectl get namespace "$namespace" >/dev/null 2>&1 \
 make_secret() {  # name key file
   echo "==> Secret $1 (from $3, key=$2)"
   kubectl -n "$namespace" create secret generic "$1" \
-    --from-file="$2=$3" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+    --from-file="$2=$3" >/dev/null
 }
 
 [ -f "$ssh_key" ]   && make_secret pi-ssh-keys authorized_keys "$ssh_key"
