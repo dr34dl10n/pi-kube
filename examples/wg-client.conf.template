@@ -1,0 +1,35 @@
+# examples/wg-client.conf.template
+#
+# Standard WireGuard CLIENT config — this is exactly the file most WG servers
+# (pivpn, wg-easy, linuxserver/wireguard, Proxmox LXC WG, …) generate for you
+# when you add a peer. If your server gave you a ready .conf, use it directly
+# (you don't need this template).
+#
+# This template is only for the case where you have the raw values but no file:
+#   cp examples/wg-client.conf.template my-pi-client.conf   # edit, then:
+#   kubectl -n pi-kube create secret generic pi-wg \
+#     --from-file=wg0.conf=my-pi-client.conf
+#
+# The chart's WireGuard sidecar (linuxserver/wireguard, client mode) reads the
+# Secret key `wg0.conf` and brings up the tunnel. The pod dials out to YOUR WG
+# server — zero ports opened on the cluster.
+#
+# From the pod's point of view: [Interface] is the pod, [Peer] is your server.
+
+[Interface]
+## The pod's (client) private key + tunnel address. Get these from your WG
+## server when you add a peer.
+PrivateKey = <PEER_PRIVATE_KEY_base64>
+Address    = 10.10.0.2/32
+# DNS = 1.1.1.1   # optional, only if you want the pod to resolve via the tunnel
+
+[Peer]
+## Your WireGuard server.
+PublicKey      = <SERVER_PUBLIC_KEY_base64>
+Endpoint       = wg.example.com:51820
+# Which IPs route through the tunnel. For SSH-only access to the pod, scope this
+# to the tunnel subnet (e.g. 10.10.0.0/24). Use 0.0.0.0/0 only if you want ALL
+# pod egress through the VPN.
+AllowedIPs     = 10.10.0.0/24
+# Keep the tunnel alive behind NAT/dynamic IP (optional, recommended).
+PersistentKeepalive = 25

@@ -15,10 +15,10 @@ kubectl create namespace pi
 # SSH authorized key (mounted at /home/pi/.ssh/authorized_keys)
 kubectl -n pi create secret generic pi-ssh-keys \
   --from-file=authorized_keys=$HOME/.ssh/id_ed25519.pub
-# WireGuard client config (keys: privatekey, peer_pubkey, endpoint, allowedips)
+# WireGuard client config (key: wg0.conf — the .conf your WG server generates
+# when you add a peer; see examples/wg-client.conf.template)
 kubectl -n pi create secret generic pi-wg \
-  --from-literal=privatekey="..." --from-literal=peer_pubkey="..." \
-  --from-literal=endpoint="203.0.113.10:51820" --from-literal=allowedips="10.10.0.0/24"
+  --from-file=wg0.conf=pi-client.conf
 ```
 
 ```bash
@@ -147,7 +147,7 @@ the chart fails fast at render time if the Secret is missing.)
 | `ingress.exposure` | How you get in | Needs | Use case |
 |---|---|---|---|
 | **`none`** (default) | no sshd; `kubectl exec -it deploy/pi -c pi -- bash -lc pi` | RBAC `pods/exec` | simplest, zero ingress |
-| **`wireguard`** (recommended) | sidecar WG **client** dials out to your WG server; SSH on the tunnel IP | Secret `{privatekey, peer_pubkey, endpoint, allowedips}` | pod otherwise inaccessible, zero public ports ✅ |
+| **`wireguard`** (recommended) | sidecar WG **client** dials out to your WG server; SSH on the tunnel IP | Secret key `wg0.conf` (standard WG client config) | pod otherwise inaccessible, zero public ports ✅ |
 | `tailscale`   | sidecar Tailscale, pod on tailnet | Secret `{authKey}` | managed WireGuard |
 | `cloudflare`  | sidecar `cloudflared`, sshd over CF tunnel | Secret `{token}` | zero public ports, CF identity |
 | `loadbalancer`| Service `type: LoadBalancer` TCP 2222 | LB + firewall/SG | cluster with a LB |
@@ -161,17 +161,13 @@ without its required Secret, instead of producing a CrashLooping pod.
 ### WireGuard setup (recommended)
 
 1. Run a WireGuard **server** on a machine you control (public IP, UDP 51820).
-2. Create a peer for the pod and produce a Secret:
-   ```yaml
-   apiVersion: v1
-   kind: Secret
-   metadata: { name: pi-wg }
-   stringData:
-     privatekey:   "<pod private key>"
-     peer_pubkey:  "<your server public key>"
-     endpoint:     "203.0.113.10:51820"
-     allowedips:   "10.10.0.0/24"   # the tunnel network you want reachable
+2. Create a peer for the pod and produce a Secret from the client `.conf` your
+   WG server generated:
+   ```bash
+   kubectl -n pi create secret generic pi-wg \
+     --from-file=wg0.conf=pi-client.conf
    ```
+   (Have only the raw values? Use `examples/wg-client.conf.template`.)
 3. `helm install pi ./charts/pi --set ingress.wireguard.configSecret=pi-wg ...`
 4. `ssh -p 2222 pi@<pod-tunnel-ip>` → tmux → `pi`.
 

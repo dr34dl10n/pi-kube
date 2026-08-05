@@ -47,8 +47,10 @@ ingress:
     #   kubectl create secret generic pi-ssh-keys --from-file=authorized_keys=~/.ssh/id_ed25519.pub
     authorizedKeysSecret: pi-ssh-keys
 
-  # WireGuard: Secret with keys privatekey, peer_pubkey, endpoint, allowedips.
-  # See charts/pi/README.md §Ingress for the Secret layout.
+  # WireGuard: Secret with key `wg0.conf` (a standard WireGuard client config —
+  # the .conf your WG server generates when you add a peer). See
+  # examples/wg-client.conf.template. Create with:
+  #   kubectl create secret generic pi-wg --from-file=wg0.conf=pi-client.conf
   wireguard:
     configSecret: pi-wg
 

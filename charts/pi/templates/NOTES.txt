@@ -20,8 +20,9 @@ The pod has no ingress. Attach interactively with:
 
 WireGuard (dial-out): the pod joins YOUR WireGuard network as a client. SSH in with:
   ssh -p {{ .Values.ingress.ssh.port }} pi@<pod-tunnel-ip>
-You land in a tmux session running Pi. Provide a Secret with keys
-{privatekey, peer_pubkey, endpoint, allowedips} via ingress.wireguard.configSecret.
+You land in a tmux session running Pi. Provide a Secret with key
+wg0.conf (a standard WireGuard client config file) via ingress.wireguard.configSecret:
+  kubectl create secret generic <name> --from-file=wg0.conf=client.conf
 {{- else if eq .Values.ingress.exposure "tailscale" }}
 
 Tailscale: the pod joins your tailnet. SSH in with:

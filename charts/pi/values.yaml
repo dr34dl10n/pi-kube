@@ -155,7 +155,9 @@ ingress:
     sidecar:
       image: ghcr.io/linuxserver/wireguard:latest
       # Userspace alternative that avoids NET_ADMIN: "ghcr.io/linuxserver/wireguard-go:latest"
-    # Secret with keys: privatekey, peer_pubkey, endpoint, allowedips, address (optional).
+    # Secret with key `wg0.conf`: a standard WireGuard client config file (the .conf
+    # your WG server generates when you add a peer). Create with:
+    #   kubectl create secret generic <name> --from-file=wg0.conf=client.conf
     configSecret: ""
     keepalive: 25
 

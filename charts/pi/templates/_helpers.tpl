@@ -104,7 +104,7 @@ out with an actionable message instead of producing a broken pod.
 {{- define "pi.validate" -}}
 {{- $exp := .Values.ingress.exposure -}}
 {{- if and (eq $exp "wireguard") (not .Values.ingress.wireguard.configSecret) -}}
-{{- fail "ingress.exposure=wireguard requires ingress.wireguard.configSecret (a Secret with keys: privatekey, peer_pubkey, endpoint, allowedips). Set ingress.wireguard.configSecret or use ingress.exposure=none (kubectl exec access)." -}}
+{{- fail "ingress.exposure=wireguard requires ingress.wireguard.configSecret (a Secret with key: wg0.conf — a standard WireGuard client config file, the .conf your WG server generates when you add a peer). Create it: kubectl create secret generic <name> --from-file=wg0.conf=client.conf  Then set ingress.wireguard.configSecret=<name>, or use ingress.exposure=none (kubectl exec access)." -}}
 {{- end -}}
 {{- if and (eq $exp "tailscale") (not .Values.ingress.tailscale.authKeySecret) -}}
 {{- fail "ingress.exposure=tailscale requires ingress.tailscale.authKeySecret (a Secret with key: authKey). Set it or use ingress.exposure=none." -}}

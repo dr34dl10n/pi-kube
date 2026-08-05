@@ -50,6 +50,8 @@ spec:
           emptyDir: {}
         {{- include "pi.volumes" . | nindent 8 }}
         {{- if include "pi.wireguardEnabled" . }}
+        - name: wireguard-run
+          emptyDir: {}
         {{- if .Values.ingress.wireguard.configSecret }}
         - name: wireguard-config
           secret:
@@ -198,11 +200,9 @@ spec:
         - name: wireguard
           image: {{ .Values.ingress.wireguard.sidecar.image | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
-          {{- if .Values.ingress.wireguard.configSecret }}
-          env:
-            - name: WG_CONFIG
-              value: /etc/wireguard/wg0.conf
-          {{- end }}
+          # The linuxserver/wireguard image (client mode) reads /config/wg_confs/*.conf
+          # and needs /config writable for s6 init/CoreDNS. The Secret must carry a
+          # single key `wg0.conf` (a standard WireGuard client config).
           securityContext:
             # WireGuard client needs NET_ADMIN + /dev/net/tun. Isolated from the
             # permissive pi container; caps drop ALL then add NET_ADMIN.
@@ -217,9 +217,11 @@ spec:
             seccompProfile:
               type: RuntimeDefault
           volumeMounts:
+            - name: wireguard-run
+              mountPath: /config
             {{- if .Values.ingress.wireguard.configSecret }}
             - name: wireguard-config
-              mountPath: /etc/wireguard
+              mountPath: /config/wg_confs
               readOnly: true
             {{- end }}
             - name: shared

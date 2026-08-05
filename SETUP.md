@@ -77,19 +77,20 @@ kubectl -n "$NS" create secret generic pi-auth --from-file=auth.json=/path/to/au
 | `exposure` | Secret keys | field |
 |---|---|---|
 | `none` (default) | — | `kubectl exec -it deploy/pi -c pi -- bash -lc pi` |
-| `wireguard` (recommended) | `privatekey, peer_pubkey, endpoint, allowedips` | `ingress.wireguard.configSecret` |
+| `wireguard` (recommended) | `wg0.conf` (a standard WG client config) | `ingress.wireguard.configSecret` |
 | `tailscale` | `authKey` | `ingress.tailscale.authKeySecret` |
 | `cloudflare` | `token` | `ingress.cloudflare.tunnelTokenSecret` |
 | `loadbalancer` | — | (no Secret) |
 
 ```bash
-# WireGuard example (you run a WG server, UDP 51820):
+# WireGuard: the .conf your WG server generates when you add a peer.
+# (Have only the raw values? See examples/wg-client.conf.template.)
 kubectl -n "$NS" create secret generic pi-wg \
-  --from-literal=privatekey="<pod private key>" \
-  --from-literal=peer_pubkey="<your server public key>" \
-  --from-literal=endpoint="203.0.113.10:51820" \
-  --from-literal=allowedips="10.10.0.0/24"
+  --from-file=wg0.conf=pi-client.conf
 ```
+
+> `scripts/deploy.sh` does all of §0a + §0c + the `helm install` for you, per
+> exposure mode. See §1.3.
 
 ---
 
@@ -129,18 +130,27 @@ Verify (§5). Once the pod is `2/2 Running` and `pi` shows the TUI, add ingress.
 
 ### 1.3 Then — with WireGuard (recommended real access)
 
+The `scripts/deploy.sh` helper builds the SSH + WG Secrets and runs `helm`
+for you:
+```bash
+./scripts/deploy.sh wireguard --ssh-key ~/.ssh/pi_key.pub --wg-conf pi-client.conf
+# Path B (private ghcr): add --pull-secret ghcr-pull
+# re-deploy after edits: add --upgrade
+```
+
+Or the manual equivalent (Secrets from §0a/§0c):
 ```bash
 helm upgrade pi ./charts/pi -n "$NS" -f examples/my-values.yaml \
   --set ingress.exposure=wireguard \
   --set ingress.ssh.enabled=true \
   --set ingress.ssh.authorizedKeysSecret=pi-ssh-keys \
   --set ingress.wireguard.configSecret=pi-wg \
-  --set global.imagePullSecrets[0].name=ghcr-pull   # ← Path B only
+  --set global.imagePullSecrets[0].name=ghcr-pull   # ← Path B only; omit if Path A
 ```
 
-`examples/my-values.yaml` already carries the wireguard defaults; the `--set`
-flags above just make the command self-contained. See `charts/pi/README.md`
-§Ingress for `tailscale`/`cloudflare`/`loadbalancer`.
+The WG sidecar (`ghcr.io/linuxserver/wireguard`, client mode) reads `wg0.conf`
+from `/config/wg_confs` and dials out to your WG server — zero cluster ports.
+See `charts/pi/README.md` §Ingress for `tailscale`/`cloudflare`/`loadbalancer`.
 
 ---
 
