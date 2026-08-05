@@ -12,7 +12,8 @@
 #   --wg-conf PATH       WireGuard client .conf (required for wireguard)
 #   --release NAME       helm release name (default: pi)
 #   --namespace NS       namespace (default: pi-kube)
-#   --image-tag TAG      override image.tag
+#   --image-tag TAG      override image.tag (default: <appVersion>-<git short sha>,
+#                        matching the tags the release workflow publishes on push)
 #   --pull-secret NAME   existing imagePullSecret name (private ghcr)
 #   --values FILE        values file (default: examples/my-values.yaml)
 #   --upgrade            helm upgrade instead of install
@@ -27,8 +28,9 @@
 
 set -euo pipefail
 
-CHART_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/charts/pi"
-DEFAULT_VALUES="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/examples/my-values.yaml"
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+CHART_DIR="$REPO_DIR/charts/pi"
+DEFAULT_VALUES="$REPO_DIR/examples/my-values.yaml"
 
 usage() {
   sed -n '3,/^$/p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
@@ -114,7 +116,16 @@ helm_args=(
   --set "ingress.ssh.authorizedKeysSecret=$ssh_secret"
 )
 [ "$mode" = "wireguard" ] && helm_args+=(--set "ingress.wireguard.configSecret=$wg_secret")
-[ -n "$image_tag" ] && helm_args+=(--set "image.tag=$image_tag")
+# Default image tag: <chart appVersion>-<git short sha>, matching the tags the
+# release workflow publishes on every push to main (:<ver>-<sha>). Override
+# with --image-tag for an explicit tag (e.g. a -full variant or a release tag).
+if [ -z "$image_tag" ]; then
+  appver=$(grep -E '^appVersion:' "$CHART_DIR/Chart.yaml" | sed -E 's/^appVersion:[[:space:]]*"?([^"]+)"?/\1/')
+  sha=$(git -C "$REPO_DIR" rev-parse --short HEAD)
+  image_tag="${appver}-${sha}"
+fi
+echo "==> image.tag=$image_tag"
+helm_args+=(--set "image.tag=$image_tag")
 [ -n "$pull_secret" ] && helm_args+=(--set "global.imagePullSecrets[0].name=$pull_secret")
 
 action="install"
