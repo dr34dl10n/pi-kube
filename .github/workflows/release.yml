@@ -156,6 +156,13 @@ jobs:
           target: slim
           platforms: linux/amd64,linux/arm64
           push: true
+          # build-push-action@v6 defaults provenance/sbom ON. On ghcr this emits
+          # extra attestation pushes that intermittently race the package ACL and
+          # fail with "failed to fetch oauth token: denied" (login succeeds, the
+          # attestation push does not). We don't consume attestations, so disable
+          # both to make pushes reliable.
+          provenance: false
+          sbom: false
           build-args: |
             PI_VERSION=${{ steps.chart.outputs.appversion }}
           tags: |
@@ -170,6 +177,8 @@ jobs:
           target: full
           platforms: linux/amd64,linux/arm64
           push: true
+          provenance: false
+          sbom: false
           build-args: |
             PI_VERSION=${{ steps.chart.outputs.appversion }}
           tags: ${{ steps.tags.outputs.full }}
