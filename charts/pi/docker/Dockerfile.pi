@@ -47,6 +47,15 @@ RUN if [ -n "$PI_VERSION" ]; then \
       echo "warning: PI_VERSION not set, installing @earendil-works/pi-coding-agent@latest" >&2; \
       npm install -g --ignore-scripts @earendil-works/pi-coding-agent; \
     fi
+# Optional pi packages baked into the image (space-separated npm specs, e.g.
+# "pi-ollama-cloud"). Installed globally with --legacy-peer-deps so pi core peer
+# deps (@earendil-works/pi-*) are NOT pulled — pi provides them at runtime.
+# Register the baked packages in the chart via `pi.packages` pointing at
+# /usr/local/lib/node_modules/<pkg>; pi loads them as local paths (no network).
+ARG PI_PACKAGES=""
+RUN if [ -n "$PI_PACKAGES" ]; then \
+      npm install -g --legacy-peer-deps $PI_PACKAGES; \
+    fi
 COPY docker/pi-shell  /usr/local/bin/pi-shell
 COPY docker/pi-login  /usr/local/bin/pi-login
 RUN chmod +x /usr/local/bin/pi-shell /usr/local/bin/pi-login

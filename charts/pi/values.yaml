@@ -43,6 +43,16 @@ pi:
   defaultModel: ""
   defaultThinkingLevel: ""
 
+  # pi packages to register in settings.json at boot. Each entry is a package
+  # source pi understands: a local path (e.g. "/usr/local/lib/node_modules/pi-ollama-cloud"
+  # for a package baked into the image via the PI_PACKAGES build arg — loads with NO
+  # runtime network), or an npm:/git: spec (needs network on a fresh PVC).
+  # Interactive mode: pi-shell runs `pi install <src>` (idempotent) into ~/.pi/agent on
+  # the home PVC at first boot. Non-interactive modes: the entries are baked into the
+  # settings.json ConfigMap directly.
+  packages: []
+  # - /usr/local/lib/node_modules/pi-ollama-cloud
+
   # Extra env vars injected into the pi container (merged with generated ones).
   extraEnv: []
   # - name: HTTP_PROXY

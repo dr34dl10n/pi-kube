@@ -17,6 +17,9 @@ data:
       {{- with .Values.pi.defaultThinkingLevel }}
       "defaultThinkingLevel": {{ . | toJson }},
       {{- end }}
+      {{- with .Values.pi.packages }}
+      "packages": {{ . | toJson }},
+      {{- end }}
       "defaultProjectTrust": "always",
       "enableInstallTelemetry": false
     }

@@ -143,6 +143,10 @@ user extraEnv. Returns a list rendered as `env:` entries.
 # SSH login still uses pi-login (sshd reads /etc/passwd, not $SHELL).
 - name: SHELL
   value: "/bin/sh"
+{{- if .Values.pi.packages }}
+- name: PI_PACKAGES
+  value: {{ join "\n" .Values.pi.packages | quote }}
+{{- end }}
 {{- if .Values.pi.defaultProvider }}
 - name: PI_PROVIDER
   value: {{ .Values.pi.defaultProvider | quote }}

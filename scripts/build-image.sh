@@ -30,6 +30,8 @@
 #   VARIANT    slim | full | custom     (default: slim)
 #   PI_VERSION pi npm package version    (default: chart appVersion)
 #   PACKAGES   extra apt pkgs (custom)  (default: "")
+#   PI_PACKAGES npm specs of pi packages to bake into the image (default: "")
+#              e.g. PI_PACKAGES="pi-ollama-cloud"; register via chart `pi.packages`
 #   PLATFORMS  buildx platforms          (default: "" = host arch only)
 #   PUSH       0|1 push after build     (default: 0)
 #   DOCKERFILE path to Dockerfile        (default: charts/pi/docker/Dockerfile.pi)
@@ -45,6 +47,7 @@ DOCKERFILE="${DOCKERFILE:-charts/pi/docker/Dockerfile.pi}"
 CONTEXT="${CONTEXT:-charts/pi}"
 VARIANT="${VARIANT:-slim}"
 PACKAGES="${PACKAGES:-}"
+PI_PACKAGES="${PI_PACKAGES:-}"
 PLATFORMS="${PLATFORMS:-}"
 PUSH="${PUSH:-0}"
 
@@ -105,6 +108,7 @@ BUILD_ARGS=(
   --target "$VARIANT"
 )
 BUILD_ARGS+=(--build-arg "PI_VERSION=$APP_VERSION")
+BUILD_ARGS+=(--build-arg "PI_PACKAGES=$PI_PACKAGES")
 [[ -n "$PACKAGES" ]] && BUILD_ARGS+=(--build-arg "PACKAGES=$PACKAGES")
 
 # --- Choose builder: buildx for multi-arch/push, plain build otherwise ---

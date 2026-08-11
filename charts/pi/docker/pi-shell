@@ -28,6 +28,16 @@ SOCK="${PI_TMUX_SOCKET:-/shared/pi.sock}"
 SESSION="${PI_TMUX_SESSION:-pi}"
 mkdir -p /shared /workspace
 
+# Register baked pi packages (local paths) into ~/.pi/agent/settings.json on the
+# home PVC so a fresh PVC gets extensions loaded on first boot. Local paths need
+# no network. `pi install` is idempotent (dedups by identity) and only touches the
+# `packages` array, leaving user settings (defaultProvider, etc.) intact.
+if [ -n "${PI_PACKAGES:-}" ]; then
+  for p in $PI_PACKAGES; do
+    [ -n "$p" ] && pi install "$p" >/dev/null 2>&1 || true
+  done
+fi
+
 # (Re)create the Pi tmux session if it is not already running. The pane runs
 # `exec pi`: when pi exits, the pane dies and the session closes; the server
 # stays up (exit-empty off) and pi-login recreates the session on the next login.
