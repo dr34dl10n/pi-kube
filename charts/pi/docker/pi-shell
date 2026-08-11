@@ -7,6 +7,11 @@
 #
 # The tmux socket lives on the shared volume /shared (an emptyDir shared with the
 # sshd/ttyd sidecars), so every container in the pod reaches the same session.
+#
+# Mode B (chosen design): quitting pi (/exit, Ctrl-D) lets the pane die, and
+# `exit-empty on` tears down the session+server. The next SSH login recreates a
+# FRESH pi via pi-login. Detaching with Ctrl-b d keeps pi running. This means a
+# "quit" is a real quit (next login = new pi), while a "detach" preserves state.
 set -eu
 
 SOCK="${PI_TMUX_SOCKET:-/shared/pi.sock}"
@@ -14,10 +19,24 @@ SESSION="${PI_TMUX_SESSION:-pi}"
 mkdir -p /shared /workspace
 
 # (Re)create the Pi tmux session if it is not already running.
+# The pane runs `exec pi`: when pi exits, the pane dies and the session is torn
+# down by `exit-empty on`. pi-login recreates it on the next login.
 if ! tmux -S "$SOCK" has-session -t "$SESSION" 2>/dev/null; then
   tmux -S "$SOCK" new-session -d -s "$SESSION" "cd /workspace && exec pi"
 fi
 chmod 0775 /shared 2>/dev/null || true
 
-# Keep the container alive. The tmux server (detached above) owns the Pi process.
-exec sleep infinity
+# Persistent reminder on the tmux status line (visible while pi runs).
+# ASCII-only: the tmux server starts at boot without a UTF-8 locale, so non-ASCII
+# here would render as garbage. The real ssh session sets LANG=en_US.UTF-8, but
+# the server's locale is fixed at start.
+tmux -S "$SOCK" set -g status-right 'Ctrl-b d: detacher (conserve la session) | /exit, Ctrl-D: quitter pi' 2>/dev/null || true
+tmux -S "$SOCK" set -g status-right-length 90 2>/dev/null || true
+
+# Keep the container alive AND reap dead children. When pi exits, the tmux server
+# exits too (exit-empty on); if PID 1 were `sleep infinity` the dead server would
+# stay as a zombie forever. `wait` reaps any exited child; with no child it
+# returns nonzero -> `sleep 1` avoids a busy spin.
+while :; do
+  wait || sleep 1
+done

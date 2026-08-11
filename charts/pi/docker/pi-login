@@ -10,16 +10,33 @@ SESSION="${PI_TMUX_SESSION:-pi}"
 # Using "$SHELL" as the fallback would recurse into pi-login forever, so the
 # fallback is a hard-coded real shell (/bin/sh).
 if command -v tmux >/dev/null 2>&1; then
-  # Recreate the persistent session if it died (e.g. the user exited Pi or the
-  # `pi` process crashed). pi-shell only (re)creates it at pod start and then
-  # sleeps forever, so without this a dead session would never come back.
-  if ! tmux -S "$SOCK" has-session -t "$SESSION" 2>/dev/null; then
-    # `|| true`: a racing client may have just recreated it -> duplicate-session
-    # error must not abort the login (set -e).
-    tmux -S "$SOCK" new-session -d -s "$SESSION" "cd /workspace && exec pi" 2>/dev/null || true
-  fi
+  # Mode B: quitting pi (/exit, Ctrl-D) lets the pane die and the session tear
+  # down (exit-empty on). Recreate a fresh session here on each login that finds
+  # no live session. Also kill a session whose pane is already dead: there is a
+  # brief window after pi exits where `has-session` is still true but the pane is
+  # dead — attaching there would print `[exited]` and drop the connection
+  # immediately (the "only works once" bug).
   if tmux -S "$SOCK" has-session -t "$SESSION" 2>/dev/null; then
-    exec tmux -S "$SOCK" attach -t "$SESSION"
+    dead=$(tmux -S "$SOCK" list-panes -t "$SESSION" -F "#{pane_dead}" 2>/dev/null | head -1 || true)
+    if [ "$dead" = "1" ]; then
+      tmux -S "$SOCK" kill-session -t "$SESSION" 2>/dev/null || true
+    fi
   fi
+  # Recreate if needed, then attach. Retry a few times: a freshly created pi may
+  # exit right away (crash on startup), tearing the session back down before we
+  # attach; loop so the user lands in a live session or falls back to a shell.
+  for _ in 1 2 3 4 5; do
+    if ! tmux -S "$SOCK" has-session -t "$SESSION" 2>/dev/null; then
+      # `|| true`: a racing client may have just recreated it -> duplicate-session
+      # error must not abort the login (set -e).
+      tmux -S "$SOCK" new-session -d -s "$SESSION" "cd /workspace && exec pi" 2>/dev/null || true
+    fi
+    if tmux -S "$SOCK" has-session -t "$SESSION" 2>/dev/null; then
+      tmux -S "$SOCK" set -g status-right 'Ctrl-b d: detacher (conserve la session) | /exit, Ctrl-D: quitter pi' 2>/dev/null || true
+      tmux -S "$SOCK" set -g status-right-length 90 2>/dev/null || true
+      exec tmux -S "$SOCK" attach -t "$SESSION"
+    fi
+    sleep 1
+  done
 fi
 exec /bin/sh
