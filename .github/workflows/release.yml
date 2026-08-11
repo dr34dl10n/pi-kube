@@ -1,18 +1,25 @@
-# Release workflow for pi-kube.
+# release.yml — single workflow for building & releasing pi-kube images.
 #
-# Two jobs:
-#   1. image — builds the slim + full image variants and pushes them to ghcr.io,
-#      tagged with the chart appVersion. Triggered on:
-#        - pushes of v* tags   -> release: produces :<version> and :<version>-full
-#        - pushes to main       -> snapshot: :<version>-<sha> and :<version>-<sha>-full
-#      Multi-arch (amd64 + arm64).
-#   2. chart — on v* tags, packages the Helm chart and attaches it to the GitHub
-#      Release, and (optionally) updates an OCI-based chart registry. The chart
-#      packaging step is a placeholder kept minimal until a chart repository is
-#      chosen (ghcr OCI chart repo is the natural choice here).
+# Triggers:
+#   - schedule (every 12h) + workflow_dispatch: poll the npm registry for a newer
+#     @earendil-works/pi-coding-agent; if one exists, bump Chart.yaml appVersion +
+#     chart patch version, commit, and push a `v*` tag (traceability), then build.
+#   - push of v* tags: manual release -> build + publish chart.
+#   - push to main: snapshot build (image only, no chart release).
+#
+# Why one workflow (not bump-then-separate-release): a tag pushed with the default
+# GITHUB_TOKEN does NOT trigger other workflows (anti-loop). Doing bump + build in
+# the same run sidesteps that entirely, and there is a single build path for both
+# automated and manual releases.
+#
+# Images: multi-arch (amd64 + arm64) slim + full variants on ghcr.io.
+# Chart: packaged and attached to the GitHub Release on v* tags (manual or auto).
 name: release
 
 on:
+  schedule:
+    - cron: '0 */12 * * *'
+  workflow_dispatch:
   push:
     tags:
       - 'v*'
@@ -20,27 +27,97 @@ on:
       - main
 
 permissions:
-  contents: read
-  packages: write
+  contents: write  # bump commit+tag and GitHub release
+  packages: write # ghcr.io push
 
 env:
   REGISTRY: ghcr.io
 
 jobs:
-  image:
+  # Only on schedule/manual: check npm, bump if a newer Pi exists, push a tag.
+  # Skipped on tag/main pushes (those are manual releases / snapshots).
+  bump:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    outputs:
+      bumped: ${{ steps.bump.outputs.bumped }}
+      new_app: ${{ steps.bump.outputs.new_app }}
+      new_chart: ${{ steps.bump.outputs.new_chart }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Read current appVersion
+        id: cur
+        run: |
+          appver="$(grep -E '^appVersion:' charts/pi/Chart.yaml | sed -E 's/^appVersion:[[:space:]]+"?([^"]+)"?[[:space:]]*$/\1/')"
+          echo "appver=$appver" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve latest Pi on npm
+        id: npm
+        run: |
+          latest="$(npm view @earendil-works/pi-coding-agent version)"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+
+      - name: Compare & bump
+        id: bump
+        run: |
+          cur="${{ steps.cur.outputs.appver }}"
+          latest="${{ steps.npm.outputs.latest }}"
+          # max of the two via sort -V; Pi ships clean semver (no pre-releases).
+          max="$(printf '%s\n' "$cur" "$latest" | sort -V | tail -1)"
+          if [[ "$max" == "$latest" && "$latest" != "$cur" ]]; then
+            chartver="$(grep -E '^version:' charts/pi/Chart.yaml | sed -E 's/^version:[[:space:]]+"?([^"]+)"?[[:space:]]*$/\1/')"
+            new_chart="$(printf '%s' "$chartver" | awk -F. '{$NF+=1; OFS="."; print $0}')"
+            # appVersion is quoted in Chart.yaml; version is not.
+            sed -i -E "s|^appVersion: .*|appVersion: \"${latest}\"|" charts/pi/Chart.yaml
+            sed -i -E "s|^version: .*|version: ${new_chart}|"        charts/pi/Chart.yaml
+            git config user.name  "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -am "chore(chart): track pi ${latest} (chart ${new_chart})"
+            git tag "v${new_chart}"
+            git push origin HEAD --tags
+            echo "bumped=true"        >> "$GITHUB_OUTPUT"
+            echo "new_app=${latest}"  >> "$GITHUB_OUTPUT"
+            echo "new_chart=${new_chart}" >> "$GITHUB_OUTPUT"
+            echo "bumped chart -> ${new_chart}, appVersion -> ${latest}"
+          else
+            echo "bumped=false" >> "$GITHUB_OUTPUT"
+            echo "no update (cur=$cur latest=$latest)"
+          fi
+
+  # Build & push images. Runs when: a bump just happened, OR this is a tag/main
+  # push (bump skipped). Skipped when a scheduled run found no update, or bump
+  # failed (so we don't build stale versions).
+  image:
+    needs: bump
+    if: always() && (needs.bump.result == 'skipped' || needs.bump.outputs.bumped == 'true')
+    runs-on: ubuntu-latest
+    steps:
+      # After an auto-bump, checkout the freshly pushed tag (bumped versions live
+      # there). Otherwise use the triggering ref (tag for manual release, main for
+      # snapshot).
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.bump.outputs.bumped == 'true' && format('refs/tags/v{0}', needs.bump.outputs.new_chart) || github.ref }}
 
       - name: Read chart versions
         id: chart
         run: |
           ver="$(grep -E '^version:' charts/pi/Chart.yaml | sed -E 's/^version:[[:space:]]+"?([^"]+)"?[[:space:]]*$/\1/')"
           appver="$(grep -E '^appVersion:' charts/pi/Chart.yaml | sed -E 's/^appVersion:[[:space:]]+"?([^"]+)"?[[:space:]]*$/\1/')"
-          echo "chartversion=$ver"   >> "$GITHUB_OUTPUT"
-          echo "appversion=$appver"   >> "$GITHUB_OUTPUT"
-          echo "chartVersion=$ver"
-          echo "appVersion=$appver"
+          echo "chartversion=$ver" >> "$GITHUB_OUTPUT"
+          echo "appversion=$appver" >> "$GITHUB_OUTPUT"
+          echo "chartVersion=$ver  appVersion=$appver"
+
+      - name: Is this a release?
+        id: rel
+        run: |
+          if [[ "${{ needs.bump.outputs.bumped }}" == "true" ]] || \
+             [[ "${{ github.event_name }}" == "push" && "${{ github.ref_type }}" == "tag" ]]; then
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Docker login to ghcr.io
         uses: docker/login-action@v3
@@ -55,16 +132,16 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Resolve tags
+      - name: Resolve image tags
         id: tags
         run: |
           owner="$(echo '${{ github.repository }}' | cut -d/ -f1)"
           base="${{ env.REGISTRY }}/${owner}/pi-kube"
           ver="${{ steps.chart.outputs.chartversion }}"
-          if [[ "${{ github.ref_type }}" == "tag" ]]; then
-            echo "slim=${base}:${ver}"       >> "$GITHUB_OUTPUT"
-            echo "full=${base}:${ver}-full" >> "$GITHUB_OUTPUT"
-            echo "latest=${base}:latest"    >> "$GITHUB_OUTPUT"
+          if [[ "${{ steps.rel.outputs.release }}" == "true" ]]; then
+            echo "slim=${base}:${ver}"        >> "$GITHUB_OUTPUT"
+            echo "full=${base}:${ver}-full"   >> "$GITHUB_OUTPUT"
+            echo "latest=${base}:latest"      >> "$GITHUB_OUTPUT"
           else
             sha="$(echo '${{ github.sha }}' | cut -c1-7)"
             echo "slim=${base}:${ver}-${sha}"       >> "$GITHUB_OUTPUT"
@@ -97,16 +174,20 @@ jobs:
             PI_VERSION=${{ steps.chart.outputs.appversion }}
           tags: ${{ steps.tags.outputs.full }}
 
+  # Package & publish the Helm chart, only on releases (manual v* tag or auto-bump).
   chart:
-    # Package and publish the Helm chart on release tags. Kept minimal; switch
-    # the OCI push on once a chart repository decision is made.
-    if: github.ref_type == 'tag'
-    runs-on: ubuntu-latest
     needs: image
-    permissions:
-      contents: write  # action-gh-release needs this to create the GitHub release
+    if: always() && needs.image.result == 'success' && (needs.bump.outputs.bumped == 'true' || (github.event_name == 'push' && github.ref_type == 'tag'))
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.bump.outputs.bumped == 'true' && format('refs/tags/v{0}', needs.bump.outputs.new_chart) || github.ref }}
+
+      - name: Read chart version
+        id: cv
+        run: |
+          echo "ver=$(grep -E '^version:' charts/pi/Chart.yaml | sed -E 's/^version:[[:space:]]+"?([^"]+)"?[[:space:]]*$/\1/')" >> "$GITHUB_OUTPUT"
 
       - name: Set up Helm
         uses: azure/setup-helm@v4
@@ -115,11 +196,10 @@ jobs:
         run: helm lint --strict charts/pi
 
       - name: Package chart
-        run: |
-          ver="$(grep -E '^version:' charts/pi/Chart.yaml | sed -E 's/^version:[[:space:]]+"?([^"]+)"?[[:space:]]*$/\1/')"
-          helm package charts/pi --version "$ver" --destination .chart-out
+        run: helm package charts/pi --version "${{ steps.cv.outputs.ver }}" --destination .chart-out
 
       - name: Upload chart to the GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ steps.cv.outputs.ver }}
           files: .chart-out/*.tgz

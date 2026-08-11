@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/pi-kube-banner.jpg" alt="pi-kube banner" width="640">
+</p>
+
 # pi-kube — expose your [Pi Coding Agent](https://github.com/earendil-works/pi) on Kubernetes, the easy & secure way 🤖⚓
 
 **Goal:** take a running [Pi Coding Agent](https://github.com/earendil-works/pi)
