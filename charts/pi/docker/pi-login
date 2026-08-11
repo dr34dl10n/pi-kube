@@ -5,7 +5,21 @@
 set -eu
 SOCK="${PI_TMUX_SOCKET:-/shared/pi.sock}"
 SESSION="${PI_TMUX_SESSION:-pi}"
-if command -v tmux >/dev/null 2>&1 && tmux -S "$SOCK" has-session -t "$SESSION" 2>/dev/null; then
-  exec tmux -S "$SOCK" attach -t "$SESSION"
+
+# sshd sets $SHELL from the user's passwd entry, which is pi-login itself.
+# Using "$SHELL" as the fallback would recurse into pi-login forever, so the
+# fallback is a hard-coded real shell (/bin/sh).
+if command -v tmux >/dev/null 2>&1; then
+  # Recreate the persistent session if it died (e.g. the user exited Pi or the
+  # `pi` process crashed). pi-shell only (re)creates it at pod start and then
+  # sleeps forever, so without this a dead session would never come back.
+  if ! tmux -S "$SOCK" has-session -t "$SESSION" 2>/dev/null; then
+    # `|| true`: a racing client may have just recreated it -> duplicate-session
+    # error must not abort the login (set -e).
+    tmux -S "$SOCK" new-session -d -s "$SESSION" "cd /workspace && exec pi" 2>/dev/null || true
+  fi
+  if tmux -S "$SOCK" has-session -t "$SESSION" 2>/dev/null; then
+    exec tmux -S "$SOCK" attach -t "$SESSION"
+  fi
 fi
-exec "${SHELL:-/bin/sh}"
+exec /bin/sh
