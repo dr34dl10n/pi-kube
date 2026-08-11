@@ -1,29 +1,43 @@
 #!/bin/sh
 # pi-shell — interactive-mode supervisor baked into the pi image.
 #
-# Goal: keep the pod alive and host a single
-# persistent tmux session running `pi`, so that an SSH login (or ttyd) attaches
-# to the *same* Pi session across client disconnects.
+# Goal: keep the pod alive and host a single persistent tmux SERVER (and its
+# session) running `pi`, so that an SSH login (or ttyd) attaches to the *same*
+# Pi session across client disconnects.
 #
 # The tmux socket lives on the shared volume /shared (an emptyDir shared with the
-# sshd/ttyd sidecars), so every container in the pod reaches the same session.
+# sshd/ttyd sidecars), so every container in the pod reaches the same server.
 #
-# Mode B (chosen design): quitting pi (/exit, Ctrl-D) lets the pane die, and
-# `exit-empty on` tears down the session+server. The next SSH login recreates a
-# FRESH pi via pi-login. Detaching with Ctrl-b d keeps pi running. This means a
-# "quit" is a real quit (next login = new pi), while a "detach" preserves state.
+# Mode B (chosen design): quitting pi (/exit, Ctrl-D) lets the pane die and the
+# session close. The tmux SERVER is kept alive in THIS (pi) container with
+# `exit-empty off`, so the next SSH login recreates a FRESH pi session ON THAT
+# SERVER; because tmux spawns the pane as a child of the server, `pi` runs in
+# THIS container with its workspace/local-tools PVCs. Detaching with Ctrl-b d
+# keeps the running pi. A "quit" is a real quit (next login = new pi); a "detach"
+# preserves state.
+#
+# Why exit-empty off (not the default on): with exit-empty on, the server exits
+# when the session closes after pi quits. pi-login runs in the sshd sidecar
+# container, which does NOT mount the workspace/local-tools PVCs, so it would
+# recreate the server THERE and `pi` would start in the sidecar without its
+# persisted workspace (broken reconnect). Keeping the server alive in the pi
+# container keeps pi where its PVCs are.
 set -eu
 
 SOCK="${PI_TMUX_SOCKET:-/shared/pi.sock}"
 SESSION="${PI_TMUX_SESSION:-pi}"
 mkdir -p /shared /workspace
 
-# (Re)create the Pi tmux session if it is not already running.
-# The pane runs `exec pi`: when pi exits, the pane dies and the session is torn
-# down by `exit-empty on`. pi-login recreates it on the next login.
+# (Re)create the Pi tmux session if it is not already running. The pane runs
+# `exec pi`: when pi exits, the pane dies and the session closes; the server
+# stays up (exit-empty off) and pi-login recreates the session on the next login.
 if ! tmux -S "$SOCK" has-session -t "$SESSION" 2>/dev/null; then
   tmux -S "$SOCK" new-session -d -s "$SESSION" "cd /workspace && exec pi"
 fi
+# Keep the server alive in THIS container across pi exits (see header). Set right
+# after the server is up: pi takes seconds to boot, so the window where it could
+# exit before exit-empty is disabled is negligible. Idempotent on a live server.
+tmux -S "$SOCK" set -s exit-empty off 2>/dev/null || true
 chmod 0775 /shared 2>/dev/null || true
 
 # Persistent reminder on the tmux status line (visible while pi runs).
@@ -33,10 +47,9 @@ chmod 0775 /shared 2>/dev/null || true
 tmux -S "$SOCK" set -g status-right 'Ctrl-b d: detacher (conserve la session) | /exit, Ctrl-D: quitter pi' 2>/dev/null || true
 tmux -S "$SOCK" set -g status-right-length 90 2>/dev/null || true
 
-# Keep the container alive AND reap dead children. When pi exits, the tmux server
-# exits too (exit-empty on); if PID 1 were `sleep infinity` the dead server would
-# stay as a zombie forever. `wait` reaps any exited child; with no child it
-# returns nonzero -> `sleep 1` avoids a busy spin.
+# Keep the container alive AND reap dead children. With exit-empty off the tmux
+# server stays up for the pod's lifetime (so `wait` blocks on it); if it ever
+# exits, `wait` reaps it and `sleep 1` avoids a busy spin.
 while :; do
   wait || sleep 1
 done

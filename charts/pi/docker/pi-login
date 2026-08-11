@@ -10,12 +10,13 @@ SESSION="${PI_TMUX_SESSION:-pi}"
 # Using "$SHELL" as the fallback would recurse into pi-login forever, so the
 # fallback is a hard-coded real shell (/bin/sh).
 if command -v tmux >/dev/null 2>&1; then
-  # Mode B: quitting pi (/exit, Ctrl-D) lets the pane die and the session tear
-  # down (exit-empty on). Recreate a fresh session here on each login that finds
-  # no live session. Also kill a session whose pane is already dead: there is a
-  # brief window after pi exits where `has-session` is still true but the pane is
-  # dead — attaching there would print `[exited]` and drop the connection
-  # immediately (the "only works once" bug).
+  # Mode B: quitting pi (/exit, Ctrl-D) lets the pane die and the session close.
+  # The tmux server stays up in the pi container (exit-empty off, set by pi-shell),
+  # so recreating the session here spawns `pi` as the server's child — i.e. in the
+  # pi container with its PVCs, NOT in this sidecar. Also kill a session whose
+  # pane is already dead: there is a brief window after pi exits where
+  # `has-session` is still true but the pane is dead — attaching there would print
+  # `[exited]` and drop the connection immediately (the "only works once" bug).
   if tmux -S "$SOCK" has-session -t "$SESSION" 2>/dev/null; then
     dead=$(tmux -S "$SOCK" list-panes -t "$SESSION" -F "#{pane_dead}" 2>/dev/null | head -1 || true)
     if [ "$dead" = "1" ]; then
