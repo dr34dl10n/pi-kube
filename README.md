@@ -25,22 +25,25 @@ from anywhere.**
 
 ## 🧩 PREREQ — stage what the pod needs
 
-The pod wants three small things (two are optional, depends on how you reach it):
+The pod wants a few small things (most optional, depends on how you reach it):
 an SSH pubkey, a WireGuard client config, and — only if you're going headless —
-an `auth.json`. You stage them as plain files under `prereq/`, then one script
-turns them into the K8s Secrets the chart expects.
+an `auth.json` and/or a `.env`. You stage them as **plain files under `prereq/`**,
+then one script auto-detects whatever's there and turns it into the K8s Secrets the
+chart expects — no manual flags.
 
 ```bash
 mkdir prereq
-cp examples/my-values.yaml prereq/my-values.yaml      # edit exposure / sizes if you like
-cp ~/.ssh/id_ed25519.pub  prereq/ssh_key.pub           # required for wireguard & loadbalancer
-cp pi-client.conf          prereq/wg.conf             # required for wireguard (your WG peer config)
-cp ~/.pi/agent/auth.json   prereq/auth.json           # optional — pre-seeds login (read-only)
+cp ~/.ssh/id_ed25519.pub  prereq/ssh_key.pub   # required for wireguard & loadbalancer
+cp pi-client.conf          prereq/wg.conf       # required for wireguard (your WG peer config)
+cp ~/.pi/agent/auth.json   prereq/auth.json     # optional — pre-seeds login (read-only)
+cp .env                    prereq/.env          # optional — KEY=VALUE lines → pod env
 scripts/prereq-secrets.sh
 ```
 
-The script creates the namespace + Secrets and prints the exact `helm install`
-command to run next. Want the why behind each prereq? See `SETUP.md` section 0.
+The script picks `ingress.exposure` from what you staged (`wireguard` if both WG +
+SSH, `loadbalancer` if only SSH, `none` otherwise), generates `prereq/my-values.yaml`
+wired to those Secrets, creates the namespace + Secrets, and prints the exact
+`helm install` command. Want the why behind each prereq? See `SETUP.md` section 0.
 
 > Prefer doing it by hand? `SETUP.md` has the raw `kubectl create secret` for
 > each mode (SSH keys, WG, tailscale, cloudflare, headless API keys).
@@ -53,8 +56,10 @@ Just run the command the script printed. It looks like:
 
 ```bash
 helm install pi ./charts/pi -n pi-kube -f prereq/my-values.yaml
-#   --set credentials.authJsonSecret=pi-auth   # only if you staged auth.json
 ```
+
+The chart pulls the image matching its own version by default, so there's no
+`--set image.tag` to keep in sync.
 
 That's it — no API key needed at install for the interactive case. SSH in, run
 `pi`, then `/login` in the TUI; `auth.json` lands on the home PVC and survives
@@ -117,13 +122,14 @@ VARIANT=custom PACKAGES="terraform helm kubectl" PUSH=1 scripts/build-image.sh
 
 CI (`.github/workflows/release.yml`) publishes `slim` + `full`
 (linux/amd64 + arm64) on `v*` tags (`:<chartVersion>`, `:latest`, `:-full`) and on
-`main` snapshots (`:<chartVersion>-<sha>`). The chart's `image.repository` already
-points at ghcr — just pick `image.tag`.
+`main` snapshots (`:<chartVersion>-<sha>`). The chart resolves `image.tag` to its
+own version by default — **no `--set image.tag` needed for a normal install**.
+Override only to pin a specific build:
 
 ```yaml
 image:
   repository: ghcr.io/dr34dl10n/pi-kube
-  tag: "0.2.0"        # or "0.2.0-full"
+  tag: ""              # default → chart version; or "<version>-full" / "<version>-<sha>"
 ```
 
 Private package? Make it public for a test, or wire a pull Secret

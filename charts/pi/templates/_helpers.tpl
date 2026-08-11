@@ -50,9 +50,14 @@ app.kubernetes.io/component: pi
 
 {{/*
 Resolved image reference.
+image.tag empty (default) → resolves to the chart version (Chart.yaml `version`),
+so `helm install` always pulls the image matching THIS chart. Override to pin a
+build, e.g. "<version>-full" (batteries-included) or a main-snapshot "<version>-<sha>".
 */}}
 {{- define "pi.image" -}}
-{{- printf "%s:%s" .Values.image.repository .Values.image.tag -}}
+{{- $tag := .Values.image.tag -}}
+{{- if not $tag -}}{{- $tag = .Chart.Version -}}{{- end -}}
+{{- printf "%s:%s" .Values.image.repository $tag -}}
 {{- end -}}
 
 {{/*

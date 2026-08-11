@@ -12,11 +12,12 @@ global:
 
 image:
   repository: ghcr.io/dr34dl10n/pi-kube
-  # Slim variant by default. Use "<tag>-full" for the batteries-included image,
-  # or build a custom image with `ARG PACKAGES` (see docker/Dockerfile.pi).
-  # Default tracks the chart version (this image is versioned with the chart,
-  # not with Pi's own npm version — see Chart.yaml appVersion for that pin).
-  tag: "0.2.1"
+  # Empty by default → resolves to the chart version (Chart.yaml `version`), so
+  # `helm install` always pulls the image matching THIS chart — no manual sync,
+  # no drifting sha. Override to pin a build:
+  #   "<version>-full"   batteries-included toolchain
+  #   "<version>-<sha>"  a main-snapshot (see .github/workflows/release.yml)
+  tag: ""
   pullPolicy: IfNotPresent
 
 # ---------------------------------------------------------------------------

@@ -5,7 +5,7 @@ description: |
   Runs Pi in a pod with persistent config/sessions/workspace, optional GPU, sshd+tmux ingress
   (WireGuard default), and headless modes (RPC/JSON/print) via Job.
 type: application
-version: 0.2.3
+version: 0.3.0
 # appVersion tracks the Pi Coding Agent release this chart is built around.
 appVersion: "0.83.0"
 home: https://github.com/dr34dl10n/pi-kube

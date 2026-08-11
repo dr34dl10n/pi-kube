@@ -10,9 +10,9 @@ The container image is published by CI (`.github/workflows/release.yml`):
 The image is versioned with the **chart** (`Chart.yaml` `version`); Pi's own npm
 version (`appVersion`, e.g. 0.83.0) is only pinned *inside* the image.
 
-`charts/pi/values.yaml` defaults to `ghcr.io/dr34dl10n/pi-kube:0.2.0`, so a
-tagged release works out of the box. Override `image.tag` to test a `main`
-snapshot (see section 2).
+`charts/pi/values.yaml` leaves `image.tag` empty, which resolves to the chart
+version — so a tagged release works out of the box with no `--set image.tag`.
+Override `image.tag` to pin a `main` snapshot or the `-full` variant (section 2).
 
 ---
 
@@ -166,15 +166,16 @@ See `charts/pi/README.md` section Ingress for `tailscale`/`cloudflare`/`loadbala
 ## 2. The container image
 
 Published by CI on `v*` tags (`:<chartVersion>`, `:latest`, `:-full`) and on `main`
-(`:<chartVersion>-<sha7>` snapshot). `values.yaml` defaults to `0.2.0`.
+(`:<chartVersion>-<sha7>` snapshot). `values.yaml` leaves `image.tag` empty, which
+resolves to the chart version — no `--set image.tag` needed.
 
 ```bash
-# release (from a v* tag) — the chart default:
---set image.tag="0.2.0"
+# release (from a v* tag) — the chart default; nothing to set:
+#   (image.tag resolves to <chartVersion>)
 # latest main snapshot (check the Actions "Resolve tags" step for the exact sha):
---set image.tag="0.2.0-<sha7>"
+--set image.tag="<chartVersion>-<sha7>"
 # batteries-included variant (fd, fzf, …):
---set image.tag="0.2.0-full"
+--set image.tag="<chartVersion>-full"
 ```
 
 > `:latest` is only pushed on `v*` tags — never trust it to track `main`.

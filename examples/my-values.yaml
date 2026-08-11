@@ -44,4 +44,6 @@ ingress:
 
 #image:
 #  repository: ghcr.io/dr34dl10n/pi-kube
-#  tag: "0.2.0"   # "0.2.0-full" for batteries-included
+#  # Empty → resolves to the chart version automatically. Set e.g. "<version>-full"
+#  # for the batteries-included image, or "<version>-<sha>" for a main-snapshot.
+#  tag: ""

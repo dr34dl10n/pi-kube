@@ -5,18 +5,18 @@
 # PUSH=1, pushes it to a registry. Defaults assume a ghcr.io destination
 # (ghcr.io/<owner>/pi-kube) since that is where the image will be published.
 #
-# The tag is derived from the chart's appVersion (charts/pi/Chart.yaml) by
+# The tag is derived from the chart version (charts/pi/Chart.yaml `version`) by
 # default; a git short-sha suffix is appended for non-release builds.
 #
 # Examples:
 #   # slim, local build only (no push)
 #   scripts/build-image.sh
 #
-#   # full variant, multi-arch, push to ghcr.io/<owner>/pi-kube:0.2.0-full
+#   # full variant, multi-arch, push to ghcr.io/<owner>/pi-kube:<chartVersion>-full
 #   VARIANT=full PLATFORMS=linux/amd64,linux/arm64 PUSH=1 scripts/build-image.sh
 #
 #   # custom variant with extra apt packages
-#   VARIANT=custom PACKAGES="terraform helm kubectl" TAG=0.2.0-custom \
+#   VARIANT=custom PACKAGES="terraform helm kubectl" TAG=<chartVersion>-custom \
 #     PUSH=1 scripts/build-image.sh
 #
 #   # point at your own registry
@@ -26,7 +26,7 @@
 #   REGISTRY   registry host            (default: ghcr.io)
 #   OWNER      image owner/namespace    (default: derived from git remote)
 #   IMAGE_NAME full image name w/o tag  (default: <OWNER>/pi-kube)
-#   TAG        image tag                (default: <appVersion>[-sha][-variant])
+#   TAG        image tag                (default: <chartVersion>[-sha][-variant])
 #   VARIANT    slim | full | custom     (default: slim)
 #   PI_VERSION pi npm package version    (default: chart appVersion)
 #   PACKAGES   extra apt pkgs (custom)  (default: "")
@@ -56,7 +56,7 @@ fi
 # --- Derive chart version (image tag base) + appVersion (Pi npm pin) --------
 # The image is versioned with the chart (`version`), while the Pi npm package
 # pinned in the Dockerfile is the chart's `appVersion`. Don't conflate the two.
-CHART_VERSION="$(grep -E '^version:' charts/pi/Chart.yaml | sed -E 's/.*"?([0-9][^"]*)"?$/\1/')"
+CHART_VERSION="$(grep -E '^version:' charts/pi/Chart.yaml | sed -E 's/^version:[[:space:]]+"?([^"]+)"?[[:space:]]*$/\1/')"
 APP_VERSION="$(grep -E '^appVersion:' charts/pi/Chart.yaml | sed -E 's/.*"(.*)".*/\1/')"
 if [[ -z "$CHART_VERSION" ]]; then
   echo "error: could not read version from charts/pi/Chart.yaml" >&2

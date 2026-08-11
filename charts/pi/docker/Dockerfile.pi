@@ -9,11 +9,11 @@
 #
 # Examples:
 #   docker build --target slim --build-arg PI_VERSION=0.83.0 \
-#                -t ghcr.io/dr34dl10n/pi-kube:0.2.0      -f docker/Dockerfile.pi .
+#                -t ghcr.io/dr34dl10n/pi-kube:<chartVersion>      -f docker/Dockerfile.pi .
 #   docker build --target full  --build-arg PI_VERSION=0.83.0 \
-#                -t ghcr.io/dr34dl10n/pi-kube:0.2.0-full -f docker/Dockerfile.pi .
+#                -t ghcr.io/dr34dl10n/pi-kube:<chartVersion>-full -f docker/Dockerfile.pi .
 #   docker build --build-arg PI_VERSION=0.83.0 --build-arg PACKAGES="terraform helm kubectl" \
-#                -t myorg/pi:0.2.0-custom -f docker/Dockerfile.pi .
+#                -t myorg/pi:<chartVersion>-custom -f docker/Dockerfile.pi .
 #
 # PI_VERSION (default: empty = latest) pins the @earendil-works/pi-coding-agent npm
 # package (= Chart.yaml appVersion, e.g. 0.83.0). scripts/build-image.sh passes
