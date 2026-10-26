@@ -181,7 +181,7 @@ resolves to the chart version — no `--set image.tag` needed.
 > `:latest` is only pushed on `v*` tags — never trust it to track `main`.
 >
 > Building your own image (custom packages / private registry / offline cluster)
-> is covered in `research/deploy-notes.md`.
+> is covered in `docs/deploy-notes.md`.
 
 ---
 
@@ -197,7 +197,7 @@ Install a provisioner (Rancher local-path, longhorn, …) and leave
 `persistence.*.storageClassName: ""` (cluster default).
 
 > Running on a bare-metal cluster with no StorageClass (static hostPath PVs) is
-> covered in `research/deploy-notes.md`.
+> covered in `docs/deploy-notes.md`.
 
 ---
 
