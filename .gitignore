@@ -17,3 +17,4 @@ charts/*/charts/
 # Kept locally only — see charts/pi/README.md for the public design rationale.
 research/
 CHART_REVIEW.md
+REVIEW.md
